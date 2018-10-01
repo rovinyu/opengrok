@@ -960,6 +960,9 @@ public class IndexDatabase {
         }
 
         if (isLocal(canonical.getPath())) {
+
+            LOGGER.log(Level.FINE, "isLocal for canonical path: ''{0}''",
+                canonical.getPath());
             if (!canonical.isDirectory()) {
                 // Always accept symlinks to local non-directories.
                 return true;
@@ -980,18 +983,25 @@ public class IndexDatabase {
 
         // No need to synchronize, as indexDown() runs on one thread.
         if (acceptedNonlocalSymlinks.containsKey(canonical.getPath())) {
-            return false;
+            LOGGER.log(Level.FINE, "acceptedNonlocalSymlinks ''{0}''",
+                canonical.getPath());
+            return true;
         }
 
         String absolstr = absolute.toString();
+        LOGGER.log(Level.FINE, "absolstr: ''{0}''", absolstr);
         for (String allowedSymlink : RuntimeEnvironment.getInstance().getAllowedSymlinks()) {
+            LOGGER.log(Level.FINE, "allowdSymlink: ''{0}''", allowedSymlink);
             if (absolstr.startsWith(allowedSymlink)) {
                 String allowedTarget = new File(allowedSymlink).getCanonicalPath();
                 String canonstr = canonical.getPath();
+
+                LOGGER.log(Level.INFO, "allowedTarget: " + allowedTarget + " canonstr: " + canonstr);
                 if (canonstr.startsWith(allowedTarget)
                         && absolstr.substring(allowedSymlink.length()).equals(
                                 canonstr.substring(allowedTarget.length()))) {
                     acceptedNonlocalSymlinks.put(canonstr, absolstr);
+                    LOGGER.log(Level.FINE, "Put to acceptedNonlocalSymlinks");
                     return true;
                 }
             }
