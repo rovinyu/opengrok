@@ -24,9 +24,9 @@ package org.opengrok.suggest;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.FieldInfos;
 import org.apache.lucene.index.IndexCommit;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.index.MultiFields;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.spell.LuceneDictionary;
 import org.apache.lucene.search.suggest.InputIterator;
@@ -119,7 +119,7 @@ class SuggesterProjectData implements Closeable {
 
     private void initFields(final Set<String> fields) throws IOException {
         try (IndexReader indexReader = DirectoryReader.open(indexDir)) {
-            Collection<String> indexedFields = MultiFields.getIndexedFields(indexReader);
+            Collection<String> indexedFields = FieldInfos.getIndexedFields(indexReader);
             if (fields == null) {
                 this.fields = new HashSet<>(indexedFields);
             } else if (!indexedFields.containsAll(fields)) {
@@ -268,9 +268,9 @@ class SuggesterProjectData implements Closeable {
     }
 
     private void store(final WFSTCompletionLookup WFST, final String field) throws IOException {
-        FileOutputStream fos = new FileOutputStream(getWFSTFile(field));
-
-        WFST.store(fos);
+        try (FileOutputStream fos = new FileOutputStream(getWFSTFile(field))) {
+            WFST.store(fos);
+        }
     }
 
     private void createSuggesterDir() throws IOException {
@@ -298,13 +298,13 @@ class SuggesterProjectData implements Closeable {
             ChronicleMapAdapter m;
             try {
                 m = new ChronicleMapAdapter(field, conf.getAverageKeySize(), conf.getEntries(), f);
-            } catch (Exception e) {
+            } catch (Throwable t) {
                 logger.log(Level.SEVERE,
                         "Could not create ChronicleMap, most popular completion disabled, if you are using "
                                 + "JDK9+ make sure to specify: "
                                 + "--add-exports java.base/jdk.internal.ref=ALL-UNNAMED "
                                 + "--add-exports java.base/jdk.internal.misc=ALL-UNNAMED "
-                                + "--add-exports java.base/sun.nio.ch=ALL-UNNAMED", e);
+                                + "--add-exports java.base/sun.nio.ch=ALL-UNNAMED", t);
                 return;
             }
 
@@ -407,7 +407,11 @@ class SuggesterProjectData implements Closeable {
             throw new IllegalArgumentException("Cannot increment search count for null");
         }
 
-        lock.readLock().lock();
+        boolean gotLock = lock.readLock().tryLock();
+        if (!gotLock) { // do not wait for rebuild
+            return;
+        }
+
         try {
             if (lookups.get(term.field()).get(term.text()) == null) {
                 return; // unknown term

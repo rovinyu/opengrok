@@ -18,10 +18,11 @@
  */
 
 /*
- * Copyright (c) 2005, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2019, Oracle and/or its affiliates. All rights reserved.
  */
 package org.opengrok.indexer.web;
 
+import java.io.Closeable;
 import java.io.EOFException;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -34,14 +35,13 @@ import java.util.logging.Logger;
 import org.opengrok.indexer.logger.LoggerFactory;
 import org.opengrok.indexer.util.IOUtils;
 
-
 /**
- * An Extremely Fast Tagged Attribute Read-only File Reader
+ * An Extremely Fast Tagged Attribute Read-only File Reader.
  * Created on October 12, 2005
  *
  * @author Chandan
  */
-public class EftarFileReader {
+public class EftarFileReader implements Closeable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EftarFileReader.class);
 
@@ -97,7 +97,7 @@ public class EftarFileReader {
                 } else if (hash < mhash) {
                     e = m - 1;
                 } else {
-                    return new FNode(mhash, f.getFilePointer() - 8l, f.readUnsignedShort(), f.readUnsignedShort(), f.readUnsignedShort());
+                    return new FNode(mhash, f.getFilePointer() - 8L, f.readUnsignedShort(), f.readUnsignedShort(), f.readUnsignedShort());
                 }
             }
             return null;
@@ -176,10 +176,10 @@ public class EftarFileReader {
     }
 
     /**
-     * Get description for path
+     * Get description for path.
      * @param path path relative to source root
      * @return path description string
-     * @throws IOException
+     * @throws IOException I/O
      */
     public String get(String path) throws IOException {
         StringTokenizer toks = new StringTokenizer(path, "/");

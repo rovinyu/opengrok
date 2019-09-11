@@ -77,13 +77,12 @@ public class SuggesterControllerProjectsDisabledTest extends JerseyTest {
         env.setHistoryEnabled(false);
         env.setProjectsEnabled(false);
         env.setSourceRoot(repository.getSourceRoot() + File.separator + "java");
-
         Indexer.getInstance().prepareIndexer(env, true, true,
-                Collections.singleton("__all__"),
-                false, false, null, null, new ArrayList<>(), false);
+                false, null, null);
+        env.setDefaultProjectsFromNames(Collections.singleton("__all__"));
         Indexer.getInstance().doIndexerExecution(true, null, null);
 
-        env.getConfiguration().getSuggesterConfig().setRebuildCronConfig(null);
+        env.getSuggesterConfig().setRebuildCronConfig(null);
     }
 
     @AfterClass
@@ -95,7 +94,7 @@ public class SuggesterControllerProjectsDisabledTest extends JerseyTest {
     public void before() {
         await().atMost(15, TimeUnit.SECONDS).until(() -> getSuggesterProjectDataSize() == 1);
 
-        env.getConfiguration().setSuggesterConfig(new SuggesterConfig());
+        env.setSuggesterConfig(new SuggesterConfig());
     }
 
     private static int getSuggesterProjectDataSize() throws Exception {

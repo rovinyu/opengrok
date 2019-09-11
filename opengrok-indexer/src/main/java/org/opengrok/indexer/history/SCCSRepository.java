@@ -19,6 +19,7 @@
 
 /*
  * Copyright (c) 2008, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Portions Copyright (c) 2018, Chris Fraire <cfraire@me.com>.
  */
 package org.opengrok.indexer.history;
 
@@ -30,12 +31,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.opengrok.indexer.configuration.RuntimeEnvironment;
 import org.opengrok.indexer.logger.LoggerFactory;
+import org.opengrok.indexer.util.BufferSink;
 import org.opengrok.indexer.util.Executor;
 
 /**
@@ -53,7 +54,7 @@ public class SCCSRepository extends Repository {
     public static final String CMD_PROPERTY_KEY
             = "org.opengrok.indexer.history.SCCS";
     /**
-     * The command to use to access the repository if none was given explicitly
+     * The command to use to access the repository if none was given explicitly.
      */
     public static final String CMD_FALLBACK = "sccs";
 
@@ -69,23 +70,25 @@ public class SCCSRepository extends Repository {
     }
 
     @Override
-    public InputStream getHistoryGet(String parent, String basename, String rev) {
+    boolean getHistoryGet(
+            BufferSink sink, String parent, String basename, String rev) {
         try {
             File history = SCCSHistoryParser.getSCCSFile(parent, basename);
             ensureCommand(CMD_PROPERTY_KEY, CMD_FALLBACK);
-            return SCCSget.getRevision(RepoCommand, history, rev);
+            try (InputStream in = SCCSget.getRevision(RepoCommand, history, rev)) {
+                copyBytes(sink, in);
+            }
+            return true;
         } catch (FileNotFoundException ex) {
-            return null;
+            // continue below
         } catch (IOException ex) {
             LOGGER.log(Level.WARNING,
                     "An error occurred while getting revision", ex);
-            return null;
         }
+        return false;
     }
 
-    private Map<String,String> getAuthors(File file) throws IOException {
-        Map<String, String> authors = new HashMap<>();
-
+    private Map<String, String> getAuthors(File file) throws IOException {
         ArrayList<String> argv = new ArrayList<>();
         ensureCommand(CMD_PROPERTY_KEY, CMD_FALLBACK);
         argv.add(RepoCommand);
@@ -113,7 +116,7 @@ public class SCCSRepository extends Repository {
      */
     @Override
     public Annotation annotate(File file, String revision) throws IOException {
-        Map<String,String> authors = getAuthors(file);
+        Map<String, String> authors = getAuthors(file);
 
         ArrayList<String> argv = new ArrayList<>();
         ensureCommand(CMD_PROPERTY_KEY, CMD_FALLBACK);
@@ -153,7 +156,7 @@ public class SCCSRepository extends Repository {
     @Override
     boolean isRepositoryFor(File file, boolean interactive) {
         if (file.isDirectory()) {
-            File f = new File(file, CODEMGR_WSDATA.toLowerCase());
+            File f = new File(file, CODEMGR_WSDATA.toLowerCase()); // OK no ROOT
             if (f.isDirectory()) {
                 return true;
             }
@@ -185,7 +188,7 @@ public class SCCSRepository extends Repository {
 
     @Override
     History getHistory(File file) throws HistoryException {
-        return new SCCSHistoryParser().parse(file, this);
+        return new SCCSHistoryParser(this).parse(file);
     }
 
     @Override

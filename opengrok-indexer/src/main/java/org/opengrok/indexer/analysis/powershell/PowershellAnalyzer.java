@@ -24,15 +24,16 @@
 package org.opengrok.indexer.analysis.powershell;
 
 import java.io.Reader;
-import org.opengrok.indexer.analysis.FileAnalyzer;
-import org.opengrok.indexer.analysis.FileAnalyzerFactory;
+import org.opengrok.indexer.analysis.AbstractAnalyzer;
+import org.opengrok.indexer.analysis.AnalyzerFactory;
 import org.opengrok.indexer.analysis.JFlexTokenizer;
 import org.opengrok.indexer.analysis.JFlexXref;
 import org.opengrok.indexer.analysis.plain.AbstractSourceCodeAnalyzer;
 
 /**
- * Analyzes PowerShell scripts Created on August 18, 2017
+ * Analyzes PowerShell scripts.
  *
+ * Created on August 18, 2017
  * @author Steven Haehn
  */
 public class PowershellAnalyzer extends AbstractSourceCodeAnalyzer {
@@ -41,20 +42,20 @@ public class PowershellAnalyzer extends AbstractSourceCodeAnalyzer {
      * Creates a new instance of {@link PowershellAnalyzer}.
      * @param factory defined instance for the analyzer
      */
-    protected PowershellAnalyzer(FileAnalyzerFactory factory) {
+    protected PowershellAnalyzer(AnalyzerFactory factory) {
         super(factory, new JFlexTokenizer(new PoshSymbolTokenizer(
-            FileAnalyzer.dummyReader)));
+                AbstractAnalyzer.DUMMY_READER)));
     }    
 
     /**
      * Gets a version number to be used to tag processed documents so that
      * re-analysis can be re-done later if a stored version number is different
      * from the current implementation.
-     * @return 20171218_00
+     * @return 20180208_00
      */
     @Override
     protected int getSpecializedVersionNo() {
-        return 20171218_00; // Edit comment above too!
+        return 20180208_00; // Edit comment above too!
     }
 
     @Override

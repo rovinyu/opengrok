@@ -28,5 +28,10 @@ package org.opengrok.indexer.util;
  * encountered while evaluating a file system path.
  */
 public class ForbiddenSymlinkException extends Exception {
-      public ForbiddenSymlinkException(String message) { super(message); }
+
+      private static final long serialVersionUID = -5483867987230977680L;
+
+      public ForbiddenSymlinkException(String message) {
+            super(message);
+      }
 }

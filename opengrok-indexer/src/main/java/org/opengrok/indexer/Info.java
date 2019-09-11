@@ -37,6 +37,7 @@ public final class Info {
 
     private static final String VERSION;
     private static final String REVISION;
+    private static final String REVISION_SHORT;
 
     static {
         try (InputStream in = Info.class.getResourceAsStream("info.properties")) {
@@ -45,13 +46,15 @@ public final class Info {
             }
             VERSION = properties.getProperty("version", "unknown");
             REVISION = properties.getProperty("changeset", "unknown");
+            REVISION_SHORT = properties.getProperty("changeset_short", "unknown");
         } catch (IOException ioe) {
             throw new RuntimeException(ioe);
         }
     }
 
     /**
-     * get major version
+     * Get major version.
+     *
      * @return major version
      */
     public static String getVersion() {
@@ -59,7 +62,8 @@ public final class Info {
     }
 
     /**
-     * get full version (product vMajor revMinor)
+     * Get full version (product vMajor revMinor).
+     *
      * @return full version
      */
     public static String getFullVersion() {
@@ -67,12 +71,24 @@ public final class Info {
     }
 
     /**
-     * get minor version
+     * Get minor version.
+     *
      * @return minor version
      */
     public static String getRevision() {
         return REVISION;
     }
+
+
+    /**
+     * Get short minor version.
+     *
+     * @return short minor version
+     */
+    public static String getShortRevision() {
+        return REVISION_SHORT;
+    }
+
 
     private Info() {
     }

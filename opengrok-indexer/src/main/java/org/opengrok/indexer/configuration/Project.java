@@ -18,7 +18,8 @@
  */
 
 /*
- * Copyright (c) 2006, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2006, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Portions Copyright (c) 2018, Chris Fraire <cfraire@me.com>.
  */
 package org.opengrok.indexer.configuration;
 
@@ -34,9 +35,10 @@ import java.util.logging.Logger;
 import org.opengrok.indexer.logger.LoggerFactory;
 import org.opengrok.indexer.util.ClassUtil;
 import org.opengrok.indexer.util.ForbiddenSymlinkException;
+import org.opengrok.indexer.web.Util;
 
 /**
- * Placeholder for the information that builds up a project
+ * Placeholder for the information that builds up a project.
  */
 public class Project implements Comparable<Project>, Nameable, Serializable {
 
@@ -48,6 +50,9 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
         ClassUtil.remarkTransientFields(Project.class);
     }
 
+    /**
+     * Path relative to source root. Uses the '/' separator on all platforms.
+     */
     private String path;
 
     /**
@@ -66,7 +71,7 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
      * A flag if the navigate window should be opened by default when browsing
      * the source code of this project.
      */
-    private boolean navigateWindowEnabled = false;
+    private Boolean navigateWindowEnabled = null;
 
     /**
      * This flag sets per-project handling of renamed files.
@@ -104,32 +109,20 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
     }
 
     /**
-     * Create a project with given name and path
+     * Create a project with given name and path and default configuration
+     * values.
      *
      * @param name the name of the project
      * @param path the path of the project relative to the source root
      */
     public Project(String name, String path) {
         this.name = name;
-        this.path = path;
+        this.path = Util.fixPathIfWindows(path);
+        completeWithDefaults();
     }
 
     /**
-     * Create a project with given name and path and default configuration
-     * values.
-     *
-     * @param name the name of the project
-     * @param path the path of the project relative to the source root
-     * @param cfg configuration containing the default values for project
-     * properties
-     */
-    public Project(String name, String path, Configuration cfg) {
-        this(name, path);
-        completeWithDefaults(cfg);
-    }
-
-    /**
-     * Get a textual name of this project
+     * Get a textual name of this project.
      *
      * @return a textual name of the project
      */
@@ -139,7 +132,7 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
     }
 
     /**
-     * Get the path (relative from source root) where this project is located
+     * Get the path (relative from source root) where this project is located.
      *
      * @return the relative path
      */
@@ -152,7 +145,7 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
     }
 
     /**
-     * Get the project id
+     * Get the project id.
      *
      * @return the id of the project
      */
@@ -185,15 +178,13 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
     }
 
     /**
-     * Set the path (relative from source root) this project is located It seems
-     * that you should ALWAYS prefix the path with current file.separator ,
-     * current environment should always have it set up
+     * Set the path (relative from source root) this project is located.
      *
      * @param path the relative path from source root where this project is
-     * located.
+     * located, starting with path separator.
      */
     public void setPath(String path) {
-        this.path = path;
+        this.path = Util.fixPathIfWindows(path);
     }
 
     public void setIndexed(boolean flag) {
@@ -227,11 +218,11 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
      * @return true if yes; false otherwise
      */
     public boolean isNavigateWindowEnabled() {
-        return navigateWindowEnabled;
+        return navigateWindowEnabled != null && navigateWindowEnabled;
     }
 
     /**
-     * Set the value of navigateWindowEnabled
+     * Set the value of navigateWindowEnabled.
      *
      * @param navigateWindowEnabled new value of navigateWindowEnabled
      */
@@ -268,7 +259,7 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
     }
 
     /**
-     * Return groups where this project belongs
+     * Return groups where this project belongs.
      *
      * @return set of groups|empty if none
      */
@@ -281,7 +272,7 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
     }
 
     /**
-     * Adds a group where this project belongs
+     * Adds a group where this project belongs.
      *
      * @param group group to add
      */
@@ -295,11 +286,11 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
     /**
      * Fill the project with the current configuration where the applicable
      * project property has a default value.
-     *
-     * @param cfg configuration with default values if applicable
      */
-    final public void completeWithDefaults(Configuration cfg) {
+    public final void completeWithDefaults() {
         Configuration defaultCfg = new Configuration();
+        final RuntimeEnvironment env = RuntimeEnvironment.getInstance();
+
         /**
          * Choosing strategy for properties (tabSize used as example here):
          * <pre>
@@ -314,22 +305,27 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
          * 2) if the project has a default value; use the provided configuration
          */
         if (getTabSize() == defaultCfg.getTabSize()) {
-            setTabSize(cfg.getTabSize());
+            setTabSize(env.getTabSize());
         }
 
         // Allow project to override global setting of renamed file handling.
         if (handleRenamedFiles == null) {
-            setHandleRenamedFiles(cfg.isHandleHistoryOfRenamedFiles());
+            setHandleRenamedFiles(env.isHandleHistoryOfRenamedFiles());
         }
 
         // Allow project to override global setting of history cache generation.
         if (historyEnabled == null) {
-            setHistoryEnabled(cfg.isHistoryEnabled());
+            setHistoryEnabled(env.isHistoryEnabled());
+        }
+
+        // Allow project to override global setting of navigate window.
+        if (navigateWindowEnabled == null) {
+            setNavigateWindowEnabled(env.isNavigateWindowEnabled());
         }
     }
 
     /**
-     * Get the project for a specific file
+     * Get the project for a specific file.
      *
      * @param path the file to lookup (relative to source root)
      * @return the project that this file belongs to (or null if the file
@@ -339,7 +335,7 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
         // Try to match each project path as prefix of the given path.
         final RuntimeEnvironment env = RuntimeEnvironment.getInstance();
         if (env.hasProjects()) {
-            final String lpath = path.replace(File.separatorChar, '/');
+            final String lpath = Util.fixPathIfWindows(path);
             for (Project p : env.getProjectList()) {
                 String projectPath = p.getPath();
                 if (projectPath == null) {
@@ -363,7 +359,7 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
     }
 
     /**
-     * Get the project for a specific file
+     * Get the project for a specific file.
      *
      * @param file the file to lookup
      * @return the project that this file belongs to (or null if the file
@@ -386,7 +382,7 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
 
     /**
      * Returns project object by its name, used in webapp to figure out which
-     * project is to be searched
+     * project is to be searched.
      *
      * @param name name of the project
      * @return project that fits the name
@@ -404,13 +400,15 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
 
     @Override
     public int compareTo(Project p2) {
-        return getName().toUpperCase(Locale.getDefault()).compareTo(p2.getName().toUpperCase(Locale.getDefault()));
+        return getName().toUpperCase(Locale.ROOT).compareTo(
+                p2.getName().toUpperCase(Locale.ROOT));
     }
 
     @Override
     public int hashCode() {
         int hash = 3;
-        hash = 41 * hash + (this.name == null ? 0 : this.name.toUpperCase(Locale.getDefault()).hashCode());
+        hash = 41 * hash + (this.name == null ? 0 :
+                this.name.toUpperCase(Locale.ROOT).hashCode());
         return hash;
     }
 
@@ -426,8 +424,16 @@ public class Project implements Comparable<Project>, Nameable, Serializable {
             return false;
         }
         final Project other = (Project) obj;
-        return !(this.name != other.name
-                && (this.name == null
-                || !this.name.toUpperCase(Locale.getDefault()).equals(other.name.toUpperCase(Locale.getDefault()))));
+
+        int numNull = (name == null ? 1 : 0) + (other.name == null ? 1 : 0);
+        switch (numNull) {
+            case 0:
+                return name.toUpperCase(Locale.ROOT).equals(
+                        other.name.toUpperCase(Locale.ROOT));
+            case 1:
+                return false;
+            default:
+                return true;
+        }
     }
 }

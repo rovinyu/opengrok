@@ -24,7 +24,6 @@
 package org.opengrok.indexer.index;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -35,36 +34,40 @@ import org.apache.lucene.store.FSDirectory;
 import org.apache.lucene.store.LockFactory;
 import org.apache.lucene.store.NativeFSLockFactory;
 import org.apache.lucene.util.Version;
-import org.opengrok.indexer.configuration.Configuration;
+import org.opengrok.indexer.configuration.RuntimeEnvironment;
 import org.opengrok.indexer.logger.LoggerFactory;
 
 /**
- * Index version checker
+ * Index version checker.
  *
  * @author Vladimir Kotal
  */
 public class IndexVersion {
-    private static final Logger LOGGER =
-            LoggerFactory.getLogger(IndexVersion.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(IndexVersion.class);
 
     /**
-     * exception thrown when index version does not match Lucene version
+     * Exception thrown when index version does not match Lucene version.
      */
     public static class IndexVersionException extends Exception {
+
+        private static final long serialVersionUID = -756788782277552544L;
 
         public IndexVersionException(String s) {
             super(s);
         }
     }
+
+    private IndexVersion() {
+    }
     
     /**
      * Check if version of index(es) matches major Lucene version.
-     * @param cfg configuration
      * @param subFilesList list of paths. If non-empty, only projects matching these paths will be checked.
      * @throws Exception otherwise
      */
-    public static void check(Configuration cfg, List<String> subFilesList) throws Exception {
-        File indexRoot = new File(cfg.getDataRoot(), IndexDatabase.INDEX_DIR);
+    public static void check(List<String> subFilesList) throws Exception {
+        RuntimeEnvironment env = RuntimeEnvironment.getInstance();
+        File indexRoot = new File(env.getDataRootPath(), IndexDatabase.INDEX_DIR);
         LOGGER.log(Level.FINE, "Checking for Lucene index version mismatch in {0}",
                 indexRoot);
 
@@ -74,28 +77,22 @@ public class IndexVersion {
                 LOGGER.log(Level.FINER,
                         "Checking Lucene index version in project {0}",
                         projectName);
-                checkDir(getDirectory(new File(indexRoot, projectName)));
+                checkDir(new File(indexRoot, projectName));
             }
         } else {
-            if (cfg.isProjectsEnabled()) {
-                for (String projectName : cfg.getProjects().keySet()) {
+            if (env.isProjectsEnabled()) {
+                for (String projectName : env.getProjects().keySet()) {
                     LOGGER.log(Level.FINER,
                             "Checking Lucene index version in project {0}",
                             projectName);
-                    checkDir(getDirectory(new File(indexRoot, projectName)));
+                    checkDir(new File(indexRoot, projectName));
                 }
             } else {
                 LOGGER.log(Level.FINER, "Checking Lucene index version in {0}",
                         indexRoot);
-                checkDir(getDirectory(indexRoot));
+                checkDir(indexRoot);
             }
         }
-    }
-    
-    private static Directory getDirectory(File indexDir) throws IOException {
-        LockFactory lockfact = NativeFSLockFactory.INSTANCE;
-        FSDirectory indexDirectory = FSDirectory.open(indexDir.toPath(), lockfact);
-        return indexDirectory;
     }
 
     /**
@@ -105,13 +102,21 @@ public class IndexVersion {
      * @param dir directory with index
      * @thows IOException if the directory cannot be opened
      */
-    private static void checkDir(Directory dir) throws IOException, Exception {
+    private static void checkDir(File dir) throws Exception {
+        LockFactory lockfact = NativeFSLockFactory.INSTANCE;
         int segVersion;
-        try {
-            segVersion = SegmentInfos.readLatestCommit(dir).getIndexCreatedVersionMajor();
-        } catch (IndexNotFoundException e) {
-            return;
+
+        try (Directory indexDirectory = FSDirectory.open(dir.toPath(), lockfact)) {
+           SegmentInfos segInfos = null;
+
+            try {
+                segInfos = SegmentInfos.readLatestCommit(indexDirectory);
+                segVersion = segInfos.getIndexCreatedVersionMajor();
+            } catch (IndexNotFoundException e) {
+                return;
+            }
         }
+
         if (segVersion != Version.LATEST.major) {
             throw new IndexVersionException(
                 String.format("Directory %s has index of version %d and Lucene has %d",

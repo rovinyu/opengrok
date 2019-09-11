@@ -160,6 +160,13 @@ label {
     padding-left: 20px;
 }
 
+/* Leave some space between the tables of repositories and projects */
+.projects table tbody:not(:last-child):after {
+    content: '';
+    display: block;
+    height: 20px;
+}
+
 .panel > .panel-heading, .panel > .panel-heading-accordion {
     padding: 0 15px;
     border-bottom: 1px solid transparent;
@@ -770,6 +777,10 @@ div[id^='src'] a.l:target, div[id^='src'] a.hl:target {
 
 .blame .a { /* author name "column" (annotation) */
     text-align: center;
+}
+
+.most_recent_revision {
+    font-weight: bold;
 }
 
 /* source code highlighting - see org/opengrok/analysis/$lang/*Xref.lex */

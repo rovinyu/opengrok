@@ -25,8 +25,10 @@
 package org.opengrok.indexer.util;
 
 import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStream;
@@ -82,8 +84,7 @@ public final class IOUtils {
      * @param path directory to delete
      * @throws IOException if any read error
      */
-    public static void removeRecursive(Path path) throws IOException
-    {
+    public static void removeRecursive(Path path) throws IOException {
         Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
@@ -168,7 +169,7 @@ public final class IOUtils {
             @Override
             public boolean accept(File dir, String name) {
                 if (suffix != null && !suffix.isEmpty()) {
-                    return suffix != null && !suffix.isEmpty() && name.endsWith(suffix);
+                    return name.endsWith(suffix);
                 } else {
                     return true;
                 }
@@ -280,5 +281,52 @@ public final class IOUtils {
             return bom.length;
         }
         return 0;
+    }
+
+    /**
+     * Get the contents of a file or empty string if the file cannot be read.
+     * @param file file object
+     * @return string with the file contents
+     */
+    public static String getFileContent(File file) {
+        if (file == null || !file.canRead()) {
+            return "";
+        }
+        FileReader fin = null;
+        BufferedReader input = null;
+        try {
+            fin = new FileReader(file);
+            input = new BufferedReader(fin);
+            String line;
+            StringBuilder contents = new StringBuilder();
+            String EOL = System.getProperty("line.separator");
+            while ((line = input.readLine()) != null) {
+                contents.append(line).append(EOL);
+            }
+            return contents.toString();
+        } catch (java.io.FileNotFoundException e) {
+            LOGGER.log(Level.WARNING, "failed to find file: {0}",
+                    e.getMessage());
+        } catch (java.io.IOException e) {
+            LOGGER.log(Level.WARNING, "failed to read file: {0}",
+                    e.getMessage());
+        } finally {
+            if (input != null) {
+                try {
+                    input.close();
+                } catch (Exception e) {
+                    /*
+                     * nothing we can do about it
+                     */ }
+            } else if (fin != null) {
+                try {
+                    fin.close();
+                } catch (Exception e) {
+                    /*
+                     * nothing we can do about it
+                     */ }
+            }
+        }
+        return "";
     }
 }

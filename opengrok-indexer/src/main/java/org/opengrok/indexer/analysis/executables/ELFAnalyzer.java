@@ -18,7 +18,7 @@
  */
 
 /*
- * Copyright (c) 2005, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2019, Oracle and/or its affiliates. All rights reserved.
  * Portions Copyright (c) 2018, Chris Fraire <cfraire@me.com>.
  */
 package org.opengrok.indexer.analysis.executables;
@@ -30,17 +30,15 @@ import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field.Store;
+import org.opengrok.indexer.analysis.AnalyzerFactory;
 import org.opengrok.indexer.analysis.FileAnalyzer;
-import org.opengrok.indexer.analysis.FileAnalyzerFactory;
-import org.opengrok.indexer.analysis.StreamSource;
 import org.opengrok.indexer.analysis.OGKTextField;
+import org.opengrok.indexer.analysis.StreamSource;
 import org.opengrok.indexer.logger.LoggerFactory;
 import org.opengrok.indexer.search.QueryBuilder;
 import org.opengrok.indexer.web.Util;
@@ -58,7 +56,7 @@ public class ELFAnalyzer extends FileAnalyzer {
 
     private static final List<String> READABLE_SECTIONS;
     static {
-        READABLE_SECTIONS = new ArrayList<String>();
+        READABLE_SECTIONS = new ArrayList<>();
         READABLE_SECTIONS.add(".debug_str");
         READABLE_SECTIONS.add(".comment");
         READABLE_SECTIONS.add(".data");
@@ -68,10 +66,10 @@ public class ELFAnalyzer extends FileAnalyzer {
     }
 
     /**
-     * Creates a new instance of ELFAnalyzer
+     * Creates a new instance of ELFAnalyzer.
      * @param factory The factory that creates ELFAnalyzers
      */
-    protected ELFAnalyzer(FileAnalyzerFactory factory) {
+    protected ELFAnalyzer(AnalyzerFactory factory) {
         super(factory);
     }
 
@@ -121,7 +119,6 @@ public class ELFAnalyzer extends FileAnalyzer {
             return null;
         }
 
-        HashMap<String, Integer> sectionMap = new HashMap<String, Integer>();
         ELFSection[] sections = new ELFSection[eh.e_shnum];
         int[] readables = new int[eh.e_shnum];
 
@@ -131,9 +128,6 @@ public class ELFAnalyzer extends FileAnalyzer {
 
             sections[i] = new ELFSection(fmap);
             String sectionName = getName(stringSection.sh_offset, sections[i].sh_name, fmap);
-            if (sectionName != null) {
-                sectionMap.put(sectionName, sections[i].sh_offset);
-            }
 
             if (sections[i].sh_type == ELFSection.SHT_STRTAB) {
                 readables[ri++] = i;
@@ -209,7 +203,7 @@ public class ELFAnalyzer extends FileAnalyzer {
         public int e_shnum;
         public int e_shstrndx;
 
-        public ELFHeader(MappedByteBuffer fmap) throws IllegalArgumentException {
+        ELFHeader(MappedByteBuffer fmap) throws IllegalArgumentException {
             if (fmap.get(ELFIdentification.EI_MAG0.value()) != 0x7f ||
                 fmap.get(ELFIdentification.EI_MAG1.value()) != 'E' ||
                 fmap.get(ELFIdentification.EI_MAG2.value()) != 'L' ||
@@ -245,7 +239,11 @@ public class ELFAnalyzer extends FileAnalyzer {
 
         @Override
         public String toString() {
-            return (e_machine.toString() + " " + ei_class.toString() + " " + "\ne_type: " + e_type.toString() + "\ne_machine: " + e_machine.value() + "\ne_version: " + e_version + "\ne_entry: " + e_entry + "\ne_phoff: " + e_phoff + "\ne_shoff: " + e_shoff + "\ne_flags: " + e_flags + "\ne_ehsize: " + e_ehsize + "\ne_phentsize:" + e_phentsize + "\ne_phnum: " + e_phnum + "\ne_shentsize" + e_shentsize + "\ne_shnum: " + e_shnum + "\ne_shstrndx: " + e_shstrndx);
+            return (e_machine.toString() + " " + ei_class.toString() + " " + "\ne_type: " + e_type.toString() +
+                    "\ne_machine: " + e_machine.value() + "\ne_version: " + e_version + "\ne_entry: " + e_entry +
+                    "\ne_phoff: " + e_phoff + "\ne_shoff: " + e_shoff + "\ne_flags: " + e_flags +
+                    "\ne_ehsize: " + e_ehsize + "\ne_phentsize:" + e_phentsize + "\ne_phnum: " + e_phnum +
+                    "\ne_shentsize" + e_shentsize + "\ne_shnum: " + e_shnum + "\ne_shstrndx: " + e_shstrndx);
         }
     }
 
@@ -291,7 +289,7 @@ public class ELFAnalyzer extends FileAnalyzer {
         public int sh_addralign;
         public int sh_entsize;
 
-        public ELFSection(MappedByteBuffer fmap) {
+        ELFSection(MappedByteBuffer fmap) {
             sh_name = fmap.getInt();
             sh_type = fmap.getInt();
             sh_flags = fmap.getInt();
@@ -306,11 +304,14 @@ public class ELFAnalyzer extends FileAnalyzer {
 
         @Override
         public String toString() {
-            return ("\nsh_name : " + sh_name + "\nsh_type : " + sh_type + "\nsh_flags: " + sh_flags + "\nsh_addr: " + sh_addr + "\nsh_offset: " + sh_offset + "\nsh_size: " + sh_size + "\nsh_link: " + sh_link + "\nsh_info: " + sh_info + "\nsh_addralign: " + sh_addralign + "\nsh_entsize: " + sh_entsize);
+            return ("\nsh_name : " + sh_name + "\nsh_type : " + sh_type + "\nsh_flags: " + sh_flags +
+                    "\nsh_addr: " + sh_addr + "\nsh_offset: " + sh_offset + "\nsh_size: " + sh_size +
+                    "\nsh_link: " + sh_link + "\nsh_info: " + sh_info + "\nsh_addralign: " + sh_addralign +
+                    "\nsh_entsize: " + sh_entsize);
         }
     }
 
-    private static enum ELFIdentification {
+    private enum ELFIdentification {
 
         EI_MAG0(0),
         EI_MAG1(1),
@@ -323,7 +324,7 @@ public class ELFAnalyzer extends FileAnalyzer {
         EI_NIDENT(16);
         private final int value;
 
-        private ELFIdentification(int value) {
+        ELFIdentification(int value) {
             this.value = value;
         }
 
@@ -332,7 +333,7 @@ public class ELFAnalyzer extends FileAnalyzer {
         }
     }
 
-    private static enum EI_Class {
+    private enum EI_Class {
         ELFCLASSNONE(0),
         ELFCLASS32(1),
         ELFCLASS64(2);
@@ -343,7 +344,7 @@ public class ELFAnalyzer extends FileAnalyzer {
 
         private final int value;
 
-        private EI_Class(int value) {
+        EI_Class(int value) {
             this.value = value;
         }
 
@@ -367,14 +368,14 @@ public class ELFAnalyzer extends FileAnalyzer {
         }
     }
 
-    private static enum EI_Data {
+    private enum EI_Data {
         ELFDATANONE(0),
         ELFDATA2LSB(1),
         ELFDATA2MSB(2);
 
         private final int value;
 
-        private EI_Data(int value) {
+        EI_Data(int value) {
             this.value = value;
         }
 
@@ -393,7 +394,7 @@ public class ELFAnalyzer extends FileAnalyzer {
         }
     }
 
-    private static enum E_Type {
+    private enum E_Type {
         ET_NONE(0),
         ET_REL(1),
         ET_EXEC(2),
@@ -407,7 +408,7 @@ public class ELFAnalyzer extends FileAnalyzer {
 
         private final int value;
 
-        private E_Type(int value) {
+        E_Type(int value) {
             this.value = value;
         }
 
@@ -436,7 +437,7 @@ public class ELFAnalyzer extends FileAnalyzer {
         }
     }
 
-    private static enum E_Machine {
+    private enum E_Machine {
         EM_NONE(0),
         EM_M32(1),
         EM_SPARC(2),
@@ -455,7 +456,7 @@ public class ELFAnalyzer extends FileAnalyzer {
 
         private final int value;
 
-        private E_Machine(int value) {
+        E_Machine(int value) {
             this.value = value;
         }
 
@@ -487,7 +488,7 @@ public class ELFAnalyzer extends FileAnalyzer {
         }
     }
 
-    private static enum E_Version {
+    private enum E_Version {
         EV_NONE(0),
         EV_CURRENT(1);
 
@@ -497,7 +498,7 @@ public class ELFAnalyzer extends FileAnalyzer {
 
         private final int value;
 
-        private E_Version(int value) {
+        E_Version(int value) {
             this.value = value;
         }
 

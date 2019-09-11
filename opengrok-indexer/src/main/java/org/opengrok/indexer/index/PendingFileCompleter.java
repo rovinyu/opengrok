@@ -26,6 +26,7 @@ package org.opengrok.indexer.index;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,6 +44,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import org.opengrok.indexer.logger.LoggerFactory;
+import org.opengrok.indexer.util.TandemPath;
 
 /**
  * Represents a tracker of pending file deletions and renamings that can later
@@ -82,7 +84,7 @@ class PendingFileCompleter {
     private final Object INSTANCE_LOCK = new Object();
 
     /**
-     * Descending path segment length comparator
+     * Descending path segment length comparator.
      */
     private static final Comparator<File> DESC_PATHLEN_COMPARATOR =
         (File f1, File f2) -> {
@@ -140,7 +142,7 @@ class PendingFileCompleter {
      * specified element
      */
     public boolean add(PendingFileRenaming e) {
-        synchronized(INSTANCE_LOCK) {
+        synchronized (INSTANCE_LOCK) {
             boolean rc = renames.add(e);
             deletions.remove(new PendingFileDeletion(e.getAbsolutePath()));
             return rc;
@@ -318,7 +320,7 @@ class PendingFileCompleter {
     }
 
     private void doDelete(PendingFileDeletionExec del) throws IOException {
-        File f = new File(del.absolutePath + PENDING_EXTENSION);
+        File f = new File(TandemPath.join(del.absolutePath, PENDING_EXTENSION));
         File parent = f.getParentFile();
         del.absoluteParent = parent;
 
@@ -360,7 +362,7 @@ class PendingFileCompleter {
             deleteFileOrDirectory(sourcePath);
 
             File sourceParentFile = sourcePath.getParent().toFile();
-            /**
+            /*
              * The double check-exists in the following conditional is necessary
              * because during a race when two threads are simultaneously linking
              * for a not-yet-existent `sourceParentFile`, the first check-exists
@@ -372,11 +374,16 @@ class PendingFileCompleter {
                     sourceParentFile.exists()) {
                 Files.createSymbolicLink(sourcePath, Paths.get(lnk.targetRel));
             }
+        } catch (FileAlreadyExistsException e) {
+            // Another case of racing threads. Given that each of them works with the same path,
+            // there is no need to worry.
+            return;
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Failed to link: {0} -> {1}",
                     new Object[]{lnk.source, lnk.targetRel});
             throw e;
         }
+
         if (LOGGER.isLoggable(Level.FINEST)) {
             LOGGER.log(Level.FINEST, "Linked pending: {0} -> {1}",
                     new Object[]{lnk.source, lnk.targetRel});
@@ -411,6 +418,7 @@ class PendingFileCompleter {
     }
 
     /**
+     * Deletes file or directory recursively.
      * <a href="https://stackoverflow.com/questions/779519/delete-directories-recursively-in-java">
      * Q: "Delete directories recursively in Java"
      * </a>,
@@ -449,7 +457,7 @@ class PendingFileCompleter {
      */
     private void tryDeleteParents(List<PendingFileDeletionExec> dels) {
         Set<File> parents = new TreeSet<>(DESC_PATHLEN_COMPARATOR);
-        dels.forEach((del) -> { parents.add(del.absoluteParent); });
+        dels.forEach((del) -> parents.add(del.absoluteParent));
 
         SkeletonDirs skels = new SkeletonDirs();
         for (File dir : parents) {
@@ -523,7 +531,7 @@ class PendingFileCompleter {
     }
 
     /**
-     * Counts segments arising from {@code File.separatorChar} or '\\'
+     * Counts segments arising from {@code File.separatorChar} or '\\'.
      * @param path
      * @return a natural number
      */
@@ -542,7 +550,7 @@ class PendingFileCompleter {
         public String absolutePath;
         public File absoluteParent;
         public IOException exception;
-        public PendingFileDeletionExec(String absolutePath) {
+        PendingFileDeletionExec(String absolutePath) {
             this.absolutePath = absolutePath;
         }
     }
@@ -551,7 +559,7 @@ class PendingFileCompleter {
         public String source;
         public String target;
         public IOException exception;
-        public PendingFileRenamingExec(String source, String target) {
+        PendingFileRenamingExec(String source, String target) {
             this.source = source;
             this.target = target;
         }
@@ -561,7 +569,7 @@ class PendingFileCompleter {
         public String source;
         public String targetRel;
         public IOException exception;
-        public PendingSymlinkageExec(String source, String relTarget) {
+        PendingSymlinkageExec(String source, String relTarget) {
             this.source = source;
             this.targetRel = relTarget;
         }

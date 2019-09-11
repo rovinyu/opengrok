@@ -28,19 +28,13 @@ After include you are here: /body/div#page/div#content/
 
 --%>
 <%@page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
-<%@page import="org.json.simple.JSONArray"%>
-<%@page import="java.util.SortedSet"%>
 <%@page import="org.opengrok.indexer.web.messages.MessagesContainer"%>
 <%@ page session="false" errorPage="error.jsp" import="
-java.io.File,
-java.io.IOException,
-
-org.opengrok.indexer.configuration.Project,
-org.opengrok.indexer.history.HistoryGuru,
-org.opengrok.indexer.web.EftarFileReader,
 org.opengrok.indexer.web.PageConfig,
 org.opengrok.indexer.web.Prefix,
-org.opengrok.indexer.web.Util"%><%
+org.opengrok.indexer.web.Util"%>
+<%@ page import="org.opengrok.indexer.web.messages.MessagesUtils" %>
+<%
 /* ---------------------- mast.jsp start --------------------- */
 {
     PageConfig cfg = PageConfig.get(request);
@@ -54,13 +48,11 @@ org.opengrok.indexer.web.Util"%><%
         return;
     }
 
-    // jel: hmmm - questionable for dynamic content
-    long flast = cfg.getLastModified();
-    if (request.getDateHeader("If-Modified-Since") >= flast) {
-        response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
+    if (cfg.isNotModified(request, response)) {
+        // the resource was not modified
+        // the code 304 NOT MODIFIED has been inserted to the response
         return;
     }
-    response.setDateHeader("Last-Modified", flast);
 
     // Use UTF-8 if no encoding is specified in the request
     if (request.getCharacterEncoding() == null) {
@@ -99,9 +91,9 @@ include file="pageheader.jspf"
     String context = request.getContextPath();
     String rev = cfg.getRequestedRevision();
 
-    JSONArray messages = new JSONArray();
+    String messages = "";
     if (cfg.getProject() != null) {
-        messages = Util.messagesToJson(cfg.getProject(),
+        messages = MessagesUtils.messagesToJson(cfg.getProject(),
                     MessagesContainer.MESSAGES_MAIN_PAGE_TAG);
     }
     %>

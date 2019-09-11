@@ -28,7 +28,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.logging.Level;
@@ -58,7 +57,9 @@ public class SSCMHistoryParser implements Executor.StreamHandler {
     private static final String TIME_PATTERN = "\\d{1,2}/\\d{1,2}/\\d{4} \\d{1,2}:\\d{2} [AP]M";
     private static final String COMMENT_START_PATTERN = "Comments - ";
     // ^([a-z][a-z ]+)(?:\[(.*?)\])?\s+(\w+)\s+(\d+)\s+(\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2} [AP]M)$\s*(?:Comments - )?
-    private static final Pattern HISTORY_PATTERN = Pattern.compile("^(" + ACTION_PATTERN + ")(?:\\[(.*?)\\])?\\s+(" + USER_PATTERN + ")\\s+(" + VERSION_PATTERN + ")\\s+(" + TIME_PATTERN + ")$\\s*(?:" + COMMENT_START_PATTERN + ")?",
+    private static final Pattern HISTORY_PATTERN = Pattern.compile("^(" + ACTION_PATTERN +
+                    ")(?:\\[(.*?)\\])?\\s+(" + USER_PATTERN + ")\\s+(" + VERSION_PATTERN + ")\\s+(" + TIME_PATTERN +
+                    ")$\\s*(?:" + COMMENT_START_PATTERN + ")?",
             Pattern.MULTILINE);
 
     private static final String NEWLINE = System.getProperty("line.separator");
@@ -74,7 +75,6 @@ public class SSCMHistoryParser implements Executor.StreamHandler {
      */
     @Override
     public void processStream(InputStream input) throws IOException {
-        DateFormat df = repository.getDateFormat();
         history = new History();
 
         BufferedReader in = new BufferedReader(new InputStreamReader(input));
@@ -124,7 +124,7 @@ public class SSCMHistoryParser implements Executor.StreamHandler {
                 entry.setAuthor(author);
                 entry.setRevision(revision);
                 try {
-                    entry.setDate(df.parse(date));
+                    entry.setDate(repository.parse(date));
                 } catch (ParseException ex) {
                     LOGGER.log(Level.WARNING, "Failed to parse date: '" + date + "'", ex);
                 }

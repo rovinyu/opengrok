@@ -37,10 +37,9 @@ import org.apache.lucene.document.Document;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.uhighlight.PhraseHelper;
+import org.apache.lucene.search.uhighlight.UHComponents;
 import org.apache.lucene.search.uhighlight.UnifiedHighlighter;
 import org.apache.lucene.util.BytesRef;
-import org.apache.lucene.util.automaton.CharacterRunAutomaton;
 import org.opengrok.indexer.analysis.AnalyzerGuru;
 import org.opengrok.indexer.analysis.ExpandTabsReader;
 import org.opengrok.indexer.analysis.StreamSource;
@@ -171,7 +170,7 @@ public class OGKUnifiedHighlighter extends UnifiedHighlighter {
                     if (!(obj instanceof FormattedLines)) {
                         return obj.toString();
                     }
-                    FormattedLines flines = (FormattedLines)obj;
+                    FormattedLines flines = (FormattedLines) obj;
                     res = res == null ? flines : res.merge(flines);
                 }
             }
@@ -242,12 +241,10 @@ public class OGKUnifiedHighlighter extends UnifiedHighlighter {
      * @return the value from the {@code super} implementation
      */
     @Override
-    protected OffsetSource getOptimizedOffsetSource(String field,
-        BytesRef[] terms, PhraseHelper phraseHelper,
-        CharacterRunAutomaton[] automata) {
+    protected OffsetSource getOptimizedOffsetSource(UHComponents components) {
 
-        OffsetSource res = super.getOptimizedOffsetSource(field,
-            terms, phraseHelper, automata);
+        OffsetSource res = super.getOptimizedOffsetSource(components);
+        String field = components.getField();
         if (res == OffsetSource.ANALYSIS) {
             /**
              *     Testing showed that UnifiedHighlighter falls back to
@@ -297,6 +294,7 @@ public class OGKUnifiedHighlighter extends UnifiedHighlighter {
             return null;
         }
 
+        repoRelPath = Util.fixPathIfWindows(repoRelPath);
         // Verify that timestamp (U) is unchanged by comparing UID.
         String uid = Util.path2uid(repoRelPath,
             DateTools.timeToString(repoAbsFile.lastModified(),
@@ -315,7 +313,7 @@ public class OGKUnifiedHighlighter extends UnifiedHighlighter {
             Reader rdr = getReader(in)) {
             int c;
             while ((c = rdr.read()) != -1) {
-                bld.append((char)c);
+                bld.append((char) c);
             }
         }
 

@@ -22,16 +22,21 @@
  */
 package org.opengrok.indexer.web.messages;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.StdSerializer;
+import javax.validation.constraints.NotBlank;
 
 import java.io.IOException;
+import java.text.DateFormat;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -85,7 +90,7 @@ public class MessagesContainer {
     }
 
     /**
-     * Get the set of messages for the arbitrary tag
+     * Get the set of messages for the arbitrary tag.
      *
      * @param tag the message tag
      * @return set of messages
@@ -193,7 +198,7 @@ public class MessagesContainer {
     }
 
     /**
-     * Set the maximum number of messages in the application
+     * Set the maximum number of messages in the application.
      *
      * @param limit the new limit
      */
@@ -223,19 +228,39 @@ public class MessagesContainer {
         return toRet == null ? new TreeSet<>() : toRet;
     }
 
-    public static class AcceptedMessage implements Comparable<AcceptedMessage> {
+    public static class AcceptedMessage implements Comparable<AcceptedMessage>, JSONable {
 
         private final Instant acceptedTime = Instant.now();
 
+        // The message member is ignored so that it can be flattened using the getters specified below.
+        @JsonIgnore
         private final Message message;
+
+        @JsonProperty("text")
+        @NotBlank(message = "text cannot be empty")
+        @JsonSerialize(using = Message.HTMLSerializer.class)
+        public String getText() {
+            return message.getText();
+        }
+
+        @JsonProperty("cssClass")
+        public String getCssClass() {
+            return message.getCssClass();
+        }
 
         private AcceptedMessage(final Message message) {
             this.message = message;
         }
 
+        @JsonProperty("created")
         @JsonSerialize(using = InstantSerializer.class)
         public Instant getAcceptedTime() {
             return acceptedTime;
+        }
+
+        @JsonProperty("tags")
+        public Set<String> getTags() {
+            return message.getTags();
         }
 
         public Message getMessage() {
@@ -246,6 +271,7 @@ public class MessagesContainer {
             return getExpirationTime().isBefore(Instant.now());
         }
 
+        @JsonProperty("expiration")
         @JsonSerialize(using = InstantSerializer.class)
         public Instant getExpirationTime() {
             return acceptedTime.plus(message.getDuration());
@@ -280,6 +306,8 @@ public class MessagesContainer {
 
         private static class InstantSerializer extends StdSerializer<Instant> {
 
+            private static final long serialVersionUID = -369908820170764793L;
+
             InstantSerializer() {
                 this(null);
             }
@@ -295,7 +323,8 @@ public class MessagesContainer {
                     final SerializerProvider serializerProvider
             ) throws IOException {
                 if (instant != null) {
-                    jsonGenerator.writeString(instant.toString());
+                    DateFormat formatter = DateFormat.getDateTimeInstance(DateFormat.LONG, DateFormat.LONG, Locale.ROOT);
+                    jsonGenerator.writeString(formatter.format(Date.from(instant)));
                 } else {
                     jsonGenerator.writeNull();
                 }

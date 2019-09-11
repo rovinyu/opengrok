@@ -18,12 +18,15 @@
  */
 
 /*
- * Copyright (c) 2005, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2019, Oracle and/or its affiliates. All rights reserved.
  * Portions Copyright 2011 Jens Elkner.
- * Portions Copyright (c) 2017, Chris Fraire <cfraire@me.com>.
+ * Portions Copyright (c) 2017-2018, Chris Fraire <cfraire@me.com>.
+ * Portions Copyright (c) 2019, Krystof Tulinger <k.tulinger@seznam.cz>.
  */
 
 package org.opengrok.indexer.web;
+
+import static org.opengrok.indexer.index.Indexer.PATH_SEPARATOR;
 
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -41,12 +44,8 @@ import java.net.URL;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.sql.Date;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -54,7 +53,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.logging.Level;
@@ -63,17 +61,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 import javax.servlet.http.HttpServletRequest;
-import org.json.simple.JSONArray;
-import org.json.simple.JSONObject;
-import org.opengrok.indexer.Info;
-import org.opengrok.indexer.configuration.Group;
-import org.opengrok.indexer.configuration.Project;
 import org.opengrok.indexer.configuration.RuntimeEnvironment;
 import org.opengrok.indexer.history.Annotation;
 import org.opengrok.indexer.history.HistoryException;
 import org.opengrok.indexer.history.HistoryGuru;
 import org.opengrok.indexer.logger.LoggerFactory;
-import org.opengrok.indexer.web.messages.MessagesContainer.AcceptedMessage;
 
 /**
  * Class for useful functions.
@@ -85,19 +77,19 @@ public final class Util {
     private static final int BOLD_COUNT_THRESHOLD = 1000;
 
     /**
-     * Matches a character that is not ASCII alpha-numeric or underscore:
-     * <pre>
-     * {@code
-     * [^A-Za-z0-9_]
-     * }
-     * </pre>
-     * (Edit above and paste below [in NetBeans] for easy String escaping.)
+     * Matches a character that is not ASCII alpha-numeric or underscore.
      */
-    private final static Pattern NON_ASCII_ALPHA_NUM = Pattern.compile(
-        "[^A-Za-z0-9_]");
+    private static final Pattern NON_ASCII_ALPHA_NUM = Pattern.compile("[^A-Za-z0-9_]");
+
+    private static String OS = null;
+
+    private static final String anchorLinkStart = "<a href=\"";
+    private static final String anchorClassStart = "<a class=\"";
+    private static final String anchorEnd = "</a>";
+    private static final String closeQuotedTag = "\">";
 
     private Util() {
-        // singleton
+        // private to ensure static
     }
 
     /**
@@ -157,7 +149,7 @@ public final class Util {
      * underscore.
      * @param str a defined instance
      * @param dest a defined target
-     * @throws IOException
+     * @throws IOException I/O exception
      */
     public static void qurlencode(String str, Appendable dest)
             throws IOException {
@@ -363,21 +355,8 @@ public final class Util {
         return false;
     }
 
-    private static final String versionP = htmlize(Info.getRevision());
-
     /**
-     * used by BUI - CSS needs this parameter for proper cache refresh (per
-     * changeset) in client browser TODO jel: but useless, since the page cached
-     * anyway.
-     *
-     * @return html escaped version (hg changeset)
-     */
-    public static String versionParameter() {
-        return versionP;
-    }
-
-    /**
-     * Convenience method for {@code breadcrumbPath(urlPrefix, path, '/')}.
+     * Convenience method for {@code breadcrumbPath(urlPrefix, path, PATH_SEPARATOR)}.
      *
      * @param urlPrefix prefix to add to each url
      * @param path path to crack
@@ -386,13 +365,8 @@ public final class Util {
      * @see #breadcrumbPath(String, String, char)
      */
     public static String breadcrumbPath(String urlPrefix, String path) {
-        return breadcrumbPath(urlPrefix, path, '/');
+        return breadcrumbPath(urlPrefix, path, PATH_SEPARATOR);
     }
-
-    private static final String anchorLinkStart = "<a href=\"";
-    private static final String anchorClassStart = "<a class=\"";
-    private static final String anchorEnd = "</a>";
-    private static final String closeQuotedTag = "\">";
 
     /**
      * Convenience method for
@@ -472,13 +446,13 @@ public final class Util {
                         * (17 + prefix.length() + postfix.length()));
         int k = path.indexOf(pnames[0]);
         if (path.lastIndexOf(sep, k) != -1) {
-            pwd.append('/');
+            pwd.append(PATH_SEPARATOR);
             markup.append(sep);
         }
         for (int i = 0; i < pnames.length; i++) {
             pwd.append(URIEncodePath(pnames[i]));
             if (isDir || i < pnames.length - 1) {
-                pwd.append('/');
+                pwd.append(PATH_SEPARATOR);
             }
             markup.append(anchorLinkStart).append(prefix).append(pwd)
                     .append(postfix).append(closeQuotedTag).append(pnames[i])
@@ -533,7 +507,7 @@ public final class Util {
         return buf.toString();
     }
 
-    private final static Pattern EMAIL_PATTERN
+    private static final Pattern EMAIL_PATTERN
             = Pattern.compile("([^<\\s]+@[^>\\s]+)");
 
     /**
@@ -576,8 +550,7 @@ public final class Util {
                     if (!res.isEmpty()) {
                         res.removeLast();
                     }
-                } else if (name.equals(".")) {
-                } else {
+                } else if (!name.equals(".")) {
                     res.add(name);
                 }
             } else {
@@ -680,7 +653,7 @@ public final class Util {
      *
      * @param s input text
      * @param dest appendable destination for appending the encoded characters
-     * @throws java.io.IOException
+     * @throws java.io.IOException I/O exception
      */
     public static void encode(String s, Appendable dest) throws IOException {
         for (int i = 0; i < s.length(); i++) {
@@ -703,12 +676,12 @@ public final class Util {
     }
 
     /**
-     * Encode URL
+     * Encode URL.
      *
      * @param urlStr string URL
      * @return the encoded URL
-     * @throws URISyntaxException
-     * @throws MalformedURLException
+     * @throws URISyntaxException URI syntax
+     * @throws MalformedURLException URL malformed
      */
     public static String encodeURL(String urlStr) throws URISyntaxException, MalformedURLException {
         URL url = new URL(urlStr);
@@ -733,15 +706,13 @@ public final class Util {
      */
     public static void readableLine(int num, Writer out, Annotation annotation,
             String userPageLink, String userPageSuffix, String project)
-            throws IOException
-    {
+            throws IOException {
         readableLine(num, out, annotation, userPageLink, userPageSuffix, project, false);
     }
 
-    public static void readableLine(int num, Writer out, Annotation annotation,
-            String userPageLink, String userPageSuffix, String project, boolean skipNewline)
-            throws IOException
-    {
+    public static void readableLine(int num, Writer out, Annotation annotation, String userPageLink,
+            String userPageSuffix, String project, boolean skipNewline)
+            throws IOException {
         // this method should go to JFlexXref
         String snum = String.valueOf(num);
         if (num > 1 && !skipNewline) {
@@ -763,16 +734,8 @@ public final class Util {
             if (enabled) {
                 out.write(anchorClassStart);
                 out.write("r");
-                if (annotation.getFileVersion(r) != 0) {
-                    /*
-                        version number, 1 is the most recent
-                        generates css classes version_color_n
-                     */
-                    int versionNumber = Math.max(1,
-                            annotation.getFileVersionsCount()
-                            - annotation.getFileVersion(r) + 1);
-                    out.write(" version_color_" + versionNumber);
-                }
+                out.write("\" style=\"background-color: ");
+                out.write(annotation.getColors().getOrDefault(r, "inherit"));
                 out.write("\" href=\"");
                 out.write(URIEncode(annotation.getFilename()));
                 out.write("?a=true&amp;r=");
@@ -789,7 +752,16 @@ public final class Util {
                 out.write(closeQuotedTag);
             }
             StringBuilder buf = new StringBuilder();
+            final boolean most_recent_revision = annotation.getFileVersion(r) == annotation.getRevisions().size();
+            // print an asterisk for the most recent revision
+            if (most_recent_revision) {
+                buf.append("<span class=\"most_recent_revision\">");
+                buf.append('*');
+            }
             htmlize(r, buf);
+            if (most_recent_revision) {
+                buf.append("</span>"); // recent revision span
+            }
             out.write(buf.toString());
             buf.setLength(0);
             if (enabled) {
@@ -855,8 +827,50 @@ public final class Util {
      * @return the original path.
      */
     public static String uid2url(String uid) {
-        String url = uid.replace('\u0000', '/');
-        return url.substring(0, url.lastIndexOf('/')); // remove date from end
+        String url = uid.replace('\u0000', PATH_SEPARATOR);
+        return url.substring(0, url.lastIndexOf(PATH_SEPARATOR)); // remove date from end
+    }
+
+    public static String fixPathIfWindows(String path) {
+        if (Util.isWindows()) {
+            // Sanitize Windows path delimiters in order not to conflict with Lucene escape character
+            // and also so the path appears as correctly formed URI in the search results.
+            return path.replace(File.separatorChar, PATH_SEPARATOR);
+        }
+        return path;
+    }
+
+    /**
+     * Determine the operation system name.
+     *
+     * @return the name in lowercase, {@code null} if unknown
+     */
+    public static String getOsName() {
+        if (OS == null) {
+            OS = System.getProperty("os.name").toLowerCase(Locale.ROOT);
+        }
+        return OS;
+    }
+
+    /**
+     * Determine if the current platform is Windows.
+     *
+     * @return true if windows, false when not windows or we can not determine
+     */
+    public static boolean isWindows() {
+        String osname = getOsName();
+        return osname != null ? osname.startsWith("windows") : false;
+    }
+
+    /**
+     * Determine if the current platform is Unix.
+     *
+     * @return true if unix, false when not unix or we can not determine
+     */
+    public static boolean isUnix() {
+        String osname = getOsName();
+        return osname != null ? (osname.startsWith("linux") || osname.startsWith("solaris") ||
+                osname.contains("bsd") || osname.startsWith("mac")) : false;
     }
 
     /**
@@ -903,7 +917,7 @@ public final class Util {
     }
 
     /**
-     * wrapper around UTF-8 URL encoding of a string
+     * Wrapper around UTF-8 URL encoding of a string.
      *
      * @param q query to be encoded. If {@code null}, an empty string will be
      * used instead.
@@ -927,7 +941,7 @@ public final class Util {
      * {@code str}.
      * @param str a defined instance
      * @param dest a defined target
-     * @throws IOException
+     * @throws IOException I/O
      */
     public static void URIEncode(String str, Appendable dest)
             throws IOException {
@@ -993,8 +1007,7 @@ public final class Util {
                     // Add leading zero if required.
                     sb.append('0');
                 }
-                sb.append(
-                        Integer.toHexString(u).toUpperCase(Locale.ENGLISH));
+                sb.append(Integer.toHexString(u).toUpperCase(Locale.ROOT));
             }
         }
         return sb.toString();
@@ -1180,11 +1193,10 @@ public final class Util {
          * For backward compatibility, read the OpenGrok-produced document
          * using the system default charset.
          */
-        try (InputStream iss = new BufferedInputStream(
-                new FileInputStream(file))) {
-            Reader in = compressed ? new InputStreamReader(new GZIPInputStream(
-                iss)) : new InputStreamReader(iss);
-            dump(out, in);
+        try (InputStream iss = new BufferedInputStream(new FileInputStream(file))) {
+            try (Reader in = compressed ? new InputStreamReader(new GZIPInputStream(iss)) : new InputStreamReader(iss)) {
+                dump(out, in);
+            }
             return true;
         } catch (IOException e) {
             LOGGER.log(Level.WARNING,
@@ -1246,223 +1258,6 @@ public final class Util {
         while (xform.yylex()) {
             // Nothing else to do.
         }
-    }
-
-    /**
-     * Print list of messages into output
-     *
-     * @param out output
-     * @param set set of messages
-     */
-    public static void printMessages(Writer out, SortedSet<AcceptedMessage> set) {
-        printMessages(out, set, false);
-    }
-
-    /**
-     * Print set of messages into output
-     *
-     * @param out output
-     * @param set set of messages
-     * @param limited if the container should be limited
-     */
-    public static void printMessages(Writer out, SortedSet<AcceptedMessage> set, boolean limited) {
-        SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
-        if (!set.isEmpty()) {
-            try {
-                out.write("<ul class=\"message-group");
-                if (limited) {
-                    out.write(" limited");
-                }
-                out.write("\">\n");
-                for (AcceptedMessage m : set) {
-                    out.write("<li class=\"message-group-item ");
-                    out.write(Util.encode(m.getMessage().getCssClass()));
-                    out.write("\" title=\"Expires on ");
-                    out.write(Util.encode(df.format(Date.from(m.getExpirationTime()))));
-                    out.write("\">");
-                    out.write(Util.encode(df.format(Date.from(m.getAcceptedTime()))));
-                    out.write(": ");
-                    out.write(m.getMessage().getText());
-                    out.write("</li>");
-                }
-                out.write("</ul>");
-            } catch (IOException ex) {
-                LOGGER.log(Level.WARNING,
-                        "An error occurred for a group of messages", ex);
-            }
-        }
-    }
-
-    /**
-     * Print set of messages into json array
-     *
-     * @param set set of messages
-     * @return json array containing the set of messages
-     */
-    @SuppressWarnings("unchecked")
-    public static JSONArray messagesToJson(SortedSet<AcceptedMessage> set) {
-        JSONArray array = new JSONArray();
-        SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
-        for (AcceptedMessage m : set) {
-            JSONObject message = new JSONObject();
-            message.put("class", Util.encode(m.getMessage().getCssClass()));
-            message.put("expiration", Util.encode(df.format(Date.from(m.getExpirationTime()))));
-            message.put("created", Util.encode(df.format(Date.from(m.getAcceptedTime()))));
-            message.put("text", Util.encode(m.getMessage().getText()));
-            JSONArray tags = new JSONArray();
-            for (String t : m.getMessage().getTags()) {
-                tags.add(Util.encode(t));
-            }
-            message.put("tags", tags);
-            array.add(message);
-        }
-        return array;
-    }
-
-    /**
-     * Print set of messages into json object for given tag.
-     *
-     * @param tag return messages in json format for the given tag
-     * @return json object with 'tag' and 'messages' attribute or null
-     */
-    @SuppressWarnings("unchecked")
-    public static JSONObject messagesToJsonObject(String tag) {
-        SortedSet<AcceptedMessage> messages = RuntimeEnvironment.getInstance().getMessages(tag);
-        if (messages.isEmpty()) {
-            return null;
-        }
-        JSONObject toRet = new JSONObject();
-        toRet.put("tag", tag);
-        toRet.put("messages", messagesToJson(messages));
-        return toRet;
-    }
-
-    /**
-     * Print messages for given tags into json array
-     *
-     * @param array the array where the result should be stored
-     * @param tags list of tags
-     * @return json array of the messages (the same as the parameter)
-     * @see #messagesToJsonObject(String)
-     */
-    @SuppressWarnings("unchecked")
-    public static JSONArray messagesToJson(JSONArray array, String... tags) {
-        array = array == null ? new JSONArray() : array;
-        for (String tag : tags) {
-            JSONObject messages = messagesToJsonObject(tag);
-            if (messages == null || messages.isEmpty()) {
-                continue;
-            }
-            array.add(messages);
-        }
-        return array;
-    }
-
-    /**
-     * Print messages for given tags into json array
-     *
-     * @param tags list of tags
-     * @return json array of the messages
-     * @see #messagesToJson(JSONArray, String...)
-     * @see #messagesToJsonObject(String)
-     */
-    public static JSONArray messagesToJson(String... tags) {
-        return messagesToJson((JSONArray) null, tags);
-    }
-
-    /**
-     * Print messages for given tags into json array
-     *
-     * @param tags list of tags
-     * @return json array of the messages
-     * @see #messagesToJson(String...)
-     * @see #messagesToJsonObject(String)
-     */
-    public static JSONArray messagesToJson(List<String> tags) {
-        String[] array = new String[tags.size()];
-        return messagesToJson(tags.toArray(array));
-    }
-
-    /**
-     * Print messages for given project into json array. These messages are
-     * tagged by project description or tagged by any of the project's group
-     * name.
-     *
-     * @param project the project
-     * @param additionalTags additional list of tags
-     * @return the json array
-     * @see #messagesToJson(String...)
-     */
-    public static JSONArray messagesToJson(Project project, String... additionalTags) {
-        if (project == null) {
-            return new JSONArray();
-        }
-        List<String> tags = new ArrayList<>();
-        tags.addAll(Arrays.asList(additionalTags));
-        tags.add(project.getName());
-        project.getGroups().stream().forEach((Group t) -> {
-            tags.add(t.getName());
-        });
-        return messagesToJson(tags);
-    }
-
-    /**
-     * Print messages for given project into json array. These messages are
-     * tagged by project description or tagged by any of the project's group
-     * name
-     *
-     * @param project the project
-     * @return the json array
-     * @see #messagesToJson(Project, String...)
-     */
-    public static JSONArray messagesToJson(Project project) {
-        return messagesToJson(project, new String[0]);
-    }
-
-    /**
-     * Print messages for given group into json array.
-     *
-     * @param group the group
-     * @param additionalTags additional list of tags
-     * @return the json array
-     * @see #messagesToJson(java.util.List)
-     */
-    public static JSONArray messagesToJson(Group group, String... additionalTags) {
-        List<String> tags = new ArrayList<>();
-        tags.add(group.getName());
-        tags.addAll(Arrays.asList(additionalTags));
-        return messagesToJson(tags);
-    }
-
-    /**
-     * Print messages for given group into json array.
-     *
-     * @param group the group
-     * @return the json array
-     * @see #messagesToJson(Group, String...)
-     */
-    public static JSONArray messagesToJson(Group group) {
-        return messagesToJson(group, new String[0]);
-    }
-
-    /**
-     * Convert statistics object into JSONObject.
-     *
-     * @param stats object containing statistics
-     * @return the json object
-     */
-    public static JSONObject statisticToJson(Statistics stats) {
-        return stats.toJson();
-    }
-
-    /**
-     * Convert JSONObject object into statistics.
-     *
-     * @param input object containing statistics
-     * @return the statistics object
-     */
-    public static Statistics jsonToStatistics(JSONObject input) {
-        return Statistics.from(input);
     }
 
     /**
@@ -1570,7 +1365,7 @@ public final class Util {
     }
 
     /**
-     * Creates a html slider for pagination. This has the same effect as
+     * Creates a HTML slider for pagination. This has the same effect as
      * invoking <code>createSlider(offset, limit, size, null)</code>.
      *
      * @param offset start of the current page
@@ -1583,8 +1378,7 @@ public final class Util {
     }
 
     /**
-     * Creates a html slider for pagination.
-     *
+     * Creates a HTML slider for pagination.
      *
      * @param offset start of the current page
      * @param limit max number of items per page
@@ -1661,7 +1455,7 @@ public final class Util {
     }
 
     /**
-     * Check if the string is a http URL.
+     * Check if the string is a HTTP URL.
      *
      * @param string the string to check
      * @return true if it is http URL, false otherwise
@@ -1676,8 +1470,31 @@ public final class Util {
         return url.getProtocol().equals("http") || url.getProtocol().equals("https");
     }
 
+    protected static final String REDACTED_USER_INFO = "redacted_by_OpenGrok";
+
     /**
-     * Build a html link to the given http url. If the URL is not an http URL
+     * If given path is a URL, return the string representation with the user-info part filtered out.
+     * @param path path to object
+     * @return either the original string or string representation of URL with the user-info part removed
+     */
+    public static String redactUrl(String path) {
+        URL url;
+        try {
+            url = new URL(path);
+        } catch (MalformedURLException e) {
+            // not an URL
+            return path;
+        }
+        if (url.getUserInfo() != null) {
+            return url.toString().replace(url.getUserInfo(),
+                    REDACTED_USER_INFO);
+        } else {
+            return path;
+        }
+    }
+
+    /**
+     * Build a HTML link to the given HTTP URL. If the URL is not an http URL
      * then it is returned as it was received. This has the same effect as
      * invoking <code>linkify(url, true)</code>.
      *
@@ -1694,9 +1511,9 @@ public final class Util {
      * Build a html link to the given http URL. If the URL is not an http URL
      * then it is returned as it was received.
      *
-     * @param url the http URL
+     * @param url the HTTP URL
      * @param newTab if the link should open in a new tab
-     * @return html containing the link &lt;a&gt;...&lt;/a&gt;
+     * @return HTML code containing the link &lt;a&gt;...&lt;/a&gt;
      */
     public static String linkify(String url, boolean newTab) {
         if (isHttpUri(url)) {
@@ -1724,8 +1541,8 @@ public final class Util {
      * @param attrs map of attributes for the html element
      * @return string containing the result
      *
-     * @throws URISyntaxException
-     * @throws MalformedURLException
+     * @throws URISyntaxException URI syntax
+     * @throws MalformedURLException malformed URL
      */
     public static String buildLink(String name, Map<String, String> attrs)
             throws URISyntaxException, MalformedURLException {
@@ -1852,8 +1669,8 @@ public final class Util {
     }
 
     /**
-     * Parses the specified url and returns its query params.
-     * @param url url to retrieve the query params from
+     * Parses the specified URL and returns its query params.
+     * @param url URL to retrieve the query params from
      * @return query params of {@code url}
      */
     public static Map<String, List<String>> getQueryParams(final URL url) {

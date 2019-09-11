@@ -19,14 +19,13 @@
 
 /*
  * Copyright (c) 2008, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Portions Copyright (c) 2018, Chris Fraire <cfraire@me.com>.
  */
 package org.opengrok.indexer.history;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.Path;
@@ -38,6 +37,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.opengrok.indexer.configuration.RuntimeEnvironment;
 import org.opengrok.indexer.logger.LoggerFactory;
+import org.opengrok.indexer.util.BufferSink;
 import org.opengrok.indexer.util.Executor;
 
 /**
@@ -73,10 +73,9 @@ public class AccuRevRepository extends Repository {
     /**
      * The property name used to obtain the client command for this repository.
      */
-    public static final String CMD_PROPERTY_KEY
-            = "org.opengrok.indexer.history.AccuRev";
+    public static final String CMD_PROPERTY_KEY = "org.opengrok.indexer.history.AccuRev";
     /**
-     * The command to use to access the repository if none was given explicitly
+     * The command to use to access the repository if none was given explicitly.
      */
     public static final String CMD_FALLBACK = "accurev";
     
@@ -95,10 +94,9 @@ public class AccuRevRepository extends Repository {
     private String relRoot = "";
     
     /**
-     * This will be /./ on Unix and \.\ on Windows 
+     * This will be /./ on Unix and \.\ on Windows .
      */
-    private static final String depotRoot 
-            = String.format( "%s.%s", File.separator, File.separator );
+    private static final String depotRoot = String.format("%s.%s", File.separator, File.separator);
 
     public AccuRevRepository() {
         type = "AccuRev";
@@ -165,10 +163,10 @@ public class AccuRevRepository extends Repository {
     }
 
     @Override
-    InputStream getHistoryGet(String parent, String basename, String rev) {
+    boolean getHistoryGet(
+            BufferSink sink, String parent, String basename, String rev) {
 
         ArrayList<String> cmd = new ArrayList<>();
-        InputStream inputStream = null;
         File directory = new File(parent);
 
         /*
@@ -216,12 +214,16 @@ public class AccuRevRepository extends Repository {
 
             executor = new Executor(cmd, directory);
             executor.exec();
-
-            inputStream
-                    = new ByteArrayInputStream(executor.getOutputString().getBytes());
+            try {
+                copyBytes(sink, executor.getOutputStream());
+                return true;
+            } catch (IOException e) {
+                LOGGER.log(Level.SEVERE, "Failed to obtain content for {0}",
+                        basename);
+            }
         }
 
-        return inputStream;
+        return false;
     }
 
     @Override
@@ -301,8 +303,7 @@ public class AccuRevRepository extends Repository {
             while ((line = info.readLine()) != null) {
 
                 if (line.contains("not logged in")) {
-                    LOGGER.log(
-                            Level.SEVERE, "Not logged into AccuRev server");
+                    LOGGER.log(Level.SEVERE, "Not logged into AccuRev server");
                     break;
                 }
 
@@ -312,16 +313,12 @@ public class AccuRevRepository extends Repository {
                         depotName = depotMatch.group(1);
                         status = true;
                     }
-                }
-
-                else if (line.startsWith("Basis")) {
+                } else if (line.startsWith("Basis")) {
                     Matcher parentMatch = PARENT_PATTERN.matcher(line);
                     if (parentMatch.find()) {
                         parentInfo = parentMatch.group(1);
                     }
-                }
-                
-                else if (line.startsWith("Top")) {
+                } else if (line.startsWith("Top")) {
                     Matcher workspaceRoot = WORKSPACE_ROOT_PATTERN.matcher(line);
                     if (workspaceRoot.find()) {
                         wsRoot = workspaceRoot.group(1);
@@ -343,7 +340,7 @@ public class AccuRevRepository extends Repository {
                         // from the path known by Accurev)
  
                         if (Files.isSymbolicLink(given)) {
-                            LOGGER.log(Level.INFO,"{0} is symbolic link.", wsPath);
+                            LOGGER.log(Level.INFO, "{0} is symbolic link.", wsPath);
                             
                             // When we know that the two paths DO NOT point to the
                             // same place (that is, the given path is deeper into
@@ -368,7 +365,7 @@ public class AccuRevRepository extends Repository {
                         }
                         
                         if (relRoot.length() > 0) {
-                            LOGGER.log(Level.INFO,"Source root relative to workspace root by: {0}", relRoot);
+                            LOGGER.log(Level.INFO, "Source root relative to workspace root by: {0}", relRoot);
                         }
                     }
                 }

@@ -27,27 +27,28 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
 import org.apache.lucene.document.Document;
-import org.opengrok.indexer.analysis.FileAnalyzerFactory;
+import org.opengrok.indexer.analysis.AnalyzerFactory;
 import org.opengrok.indexer.analysis.JFlexXref;
+import org.opengrok.indexer.analysis.OGKTextField;
 import org.opengrok.indexer.analysis.StreamSource;
 import org.opengrok.indexer.analysis.TextAnalyzer;
-import org.opengrok.indexer.analysis.OGKTextField;
 import org.opengrok.indexer.analysis.WriteXrefArgs;
 import org.opengrok.indexer.analysis.Xrefer;
 import org.opengrok.indexer.search.QueryBuilder;
 
 /**
- * Analyzes HTML files Created on September 30, 2005
+ * Analyzes HTML files.
  *
+ * Created on September 30, 2005
  * @author Chandan
  */
 public class XMLAnalyzer extends TextAnalyzer {
 
     /**
-     * Creates a new instance of XMLAnalyzer
+     * Creates a new instance of XMLAnalyzer.
      * @param factory factory to be used
      */
-    protected XMLAnalyzer(FileAnalyzerFactory factory) {
+    protected XMLAnalyzer(AnalyzerFactory factory) {
         super(factory);
     }
 

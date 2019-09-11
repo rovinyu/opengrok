@@ -90,16 +90,16 @@ public class IndexVersionTest {
     private void testIndexVersion(boolean projectsEnabled, List<String> subFiles) throws Exception {
         env.setHistoryEnabled(false);
         env.setProjectsEnabled(projectsEnabled);
-        Indexer.getInstance().prepareIndexer(env, true, true, null,
-                false, false, null, null, new ArrayList<>(), false);
+        Indexer.getInstance().prepareIndexer(env, true, true,
+                false, null, null);
         Indexer.getInstance().doIndexerExecution(true, null, null);
 
-        IndexVersion.check(env.getConfiguration(), subFiles);
+        IndexVersion.check(subFiles);
     }
     
     @Test
     public void testIndexVersionNoIndex() throws Exception {
-        IndexVersion.check(env.getConfiguration(), new ArrayList<>());
+        IndexVersion.check(new ArrayList<>());
     }
     
     @Test
@@ -122,7 +122,6 @@ public class IndexVersionTest {
     
     @Test(expected = IndexVersion.IndexVersionException.class)
     public void testIndexVersionOldIndex() throws Exception {
-        Configuration cfg = new Configuration();
         oldIndexDataDir = Files.createTempDirectory("data");
         Path indexPath = oldIndexDataDir.resolve("index");
         Files.createDirectory(indexPath);
@@ -133,8 +132,8 @@ public class IndexVersionTest {
         File archive = new File(oldindex.getPath());
         assertTrue("archive exists", archive.isFile());
         FileUtilities.extractArchive(archive, indexDir);
-        cfg.setDataRoot(oldIndexDataDir.toString());
-        cfg.setProjectsEnabled(false);
-        IndexVersion.check(cfg, new ArrayList<>());
+        env.setDataRoot(oldIndexDataDir.toString());
+        env.setProjectsEnabled(false);
+        IndexVersion.check(new ArrayList<>());
     }
 }

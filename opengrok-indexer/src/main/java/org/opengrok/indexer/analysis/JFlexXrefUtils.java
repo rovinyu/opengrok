@@ -20,7 +20,7 @@
 /*
  * Copyright (c) 2009, 2018, Oracle and/or its affiliates. All rights reserved.
  * Portions Copyright 2011 Jens Elkner.
- * Portions Copyright (c) 2017, Chris Fraire <cfraire@me.com>.
+ * Portions Copyright (c) 2017-2018, Chris Fraire <cfraire@me.com>.
  */
 
 package org.opengrok.indexer.analysis;
@@ -30,6 +30,7 @@ import java.io.Writer;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedSet;
@@ -50,13 +51,7 @@ import org.opengrok.indexer.web.Util;
 public class JFlexXrefUtils {
 
     /**
-     * Matches an HTML 5 ID or Name:
-     * <pre>
-     * {@code
-     * (?U)^\S+$
-     * }
-     * </pre>
-     * (Edit above and paste below [in NetBeans] for easy String escaping.)
+     * Matches an HTML 5 ID or Name.
      */
     private static final Pattern HTML5_ID_NAME = Pattern.compile("(?U)^\\S+$");
 
@@ -165,7 +160,7 @@ public class JFlexXrefUtils {
     /**
      * Generate span id for namespace based on line number, name, and signature
      * (more functions with same name and signature can be defined in single
-     * file)
+     * file).
      * @param scope Scope to generate id from
      * @return generated span id
      */
@@ -182,7 +177,7 @@ public class JFlexXrefUtils {
      * {@link Definitions#getTags(int)} indicates that a function or method
      * is defined to starting at the {@link JFlexStackingLexer#getLineNumber()}
      * of {@code lexer}.
-     * @param scopesEnabled
+     * @param scopesEnabled are scopes enabled ?
      * @param existingScope possibly a defined instance or null
      * @param lexer a defined, associated lexer
      * @param defs possibly a defined instance or null
@@ -252,7 +247,7 @@ public class JFlexXrefUtils {
         String[] strs = new String[1];
         strs[0] = "";
 
-        String check = caseSensitive ? symbol : symbol.toLowerCase();
+        String check = caseSensitive ? symbol : symbol.toLowerCase(Locale.ROOT);
         if (isKeyword || (keywords != null && keywords.contains( check ))) {
             // This is a keyword, so we don't create a link.
             out.append("<b>");
@@ -447,7 +442,7 @@ public class JFlexXrefUtils {
         }
     }
 
-    /** private to enforce static */
+    /** Private to enforce static. */
     private JFlexXrefUtils() {
     }
 }

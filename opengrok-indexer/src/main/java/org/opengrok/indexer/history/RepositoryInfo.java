@@ -27,7 +27,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
 import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
 import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -61,7 +60,7 @@ public class RepositoryInfo implements Serializable {
     
     private String directoryNameRelative;
     protected Boolean working;
-    protected String type;
+    protected String type;  // type of the repository, should be unique
     protected boolean remote;
     protected String[] datePatterns = new String[0];
     protected String parent;
@@ -71,10 +70,6 @@ public class RepositoryInfo implements Serializable {
     private boolean handleRenamedFiles;
     private boolean historyEnabled;
 
-    /**
-     * format used for printing the date in {@code currentVersion}
-     */
-    protected static final SimpleDateFormat outputDateFormat = new SimpleDateFormat("YYYY-MM-dd HH:mm Z");
 
     /**
      * Empty constructor to support serialization.
@@ -127,7 +122,7 @@ public class RepositoryInfo implements Serializable {
     }
 
     /**
-     * Set relative path to source root
+     * Set relative path to source root.
      * @param dir directory
      */
     public void setDirectoryNameRelative(String dir) {
@@ -164,8 +159,7 @@ public class RepositoryInfo implements Serializable {
             }
         } catch (IOException e) {
             path = originalPath;
-            LOGGER.log(Level.SEVERE, String.format(
-                "Failed to get canonical path for {0}", path), e);
+            LOGGER.log(Level.SEVERE, String.format("Failed to get canonical path for %s", path), e);
         }
 
         if (path.startsWith(rootPath)) {
@@ -177,7 +171,7 @@ public class RepositoryInfo implements Serializable {
 
     /**
      * Returns true if this repository is usable in this context (for SCM
-     * systems that use external binaries, the binary must be available etc)
+     * systems that use external binaries, the binary must be available etc).
      *
      * @return true if the HistoryGuru may use the repository
      */
@@ -186,7 +180,7 @@ public class RepositoryInfo implements Serializable {
     }
 
     /**
-     * Set the property working
+     * Set the property working.
      *
      * @param working is repository working
      */
@@ -205,7 +199,7 @@ public class RepositoryInfo implements Serializable {
     }
 
     /**
-     * Set the property remote
+     * Set the property remote.
      *
      * @param remote is remote repository
      */
@@ -214,7 +208,7 @@ public class RepositoryInfo implements Serializable {
     }
 
     /**
-     * get property type
+     * Get property type.
      *
      * @return type
      */
@@ -223,7 +217,7 @@ public class RepositoryInfo implements Serializable {
     }
 
     /**
-     * Set property type
+     * Set property type.
      *
      * @param type repository type
      */
@@ -232,7 +226,7 @@ public class RepositoryInfo implements Serializable {
     }
 
     /**
-     * get property parent
+     * Get property parent.
      *
      * @return parent
      */
@@ -241,7 +235,7 @@ public class RepositoryInfo implements Serializable {
     }
 
     /**
-     * Set property parent
+     * Set property parent.
      *
      * @param parent parent of the repository
      */
@@ -272,7 +266,7 @@ public class RepositoryInfo implements Serializable {
     public void setCurrentVersion(String currentVersion) {
         this.currentVersion = currentVersion;
     }
-    
+
     /**
      * Fill configurable properties from associated project (if any) or Configuration.
      */

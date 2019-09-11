@@ -35,7 +35,6 @@ import org.opengrok.suggest.Suggester.NamedIndexDir;
 import org.opengrok.suggest.Suggester.NamedIndexReader;
 import org.opengrok.suggest.Suggester.Suggestions;
 import org.opengrok.suggest.query.SuggesterQuery;
-import org.opengrok.indexer.configuration.Configuration;
 import org.opengrok.indexer.configuration.Project;
 import org.opengrok.indexer.configuration.RuntimeEnvironment;
 import org.opengrok.indexer.configuration.SuggesterConfig;
@@ -130,7 +129,7 @@ public class SuggesterServiceImpl implements SuggesterService {
             final Collection<String> projects,
             final List<SuperIndexSearcher> superIndexSearchers
     ) {
-        if (env.getConfiguration().isProjectsEnabled()) {
+        if (env.isProjectsEnabled()) {
             return projects.stream().map(project -> {
                 try {
                     SuperIndexSearcher searcher = env.getIndexSearcher(project);
@@ -157,7 +156,7 @@ public class SuggesterServiceImpl implements SuggesterService {
     /** {@inheritDoc} */
     @Override
     public void refresh() {
-        logger.log(Level.FINE, "Refreshing suggester for new configuration {0}", env.getConfiguration());
+        logger.log(Level.FINE, "Refreshing suggester for new configuration {0}", env.getSuggesterConfig());
         lock.writeLock().lock();
         try {
             // close and init from scratch because many things may have changed in the configuration
@@ -175,23 +174,36 @@ public class SuggesterServiceImpl implements SuggesterService {
 
     /** {@inheritDoc} */
     @Override
-    public void refresh(final String project) {
-        Configuration config = env.getConfiguration();
+    public void rebuild() {
+        lock.readLock().lock();
+        try {
+            if (suggester == null) {
+                logger.log(Level.FINE, "Cannot perform rebuild because suggester is not initialized");
+                return;
+            }
+            suggester.rebuild(getAllProjectIndexDirs());
+        } finally {
+            lock.readLock().unlock();
+        }
+    }
 
-        Project p = config.getProjects().get(project);
+    /** {@inheritDoc} */
+    @Override
+    public void rebuild(final String project) {
+        Project p = env.getProjects().get(project);
         if (p == null) {
-            logger.log(Level.WARNING, "Cannot refresh suggester because project for name {0} was not found",
+            logger.log(Level.WARNING, "Cannot rebuild suggester because project for name {0} was not found",
                     project);
             return;
         }
         if (!p.isIndexed()) {
-            logger.log(Level.WARNING, "Cannot refresh project {0} because it is not indexed yet", project);
+            logger.log(Level.WARNING, "Cannot rebuild project {0} because it is not indexed yet", project);
             return;
         }
         lock.readLock().lock();
         try {
             if (suggester == null) {
-                logger.log(Level.FINE, "Cannot refresh {0} because suggester is not initialized", project);
+                logger.log(Level.FINE, "Cannot rebuild {0} because suggester is not initialized", project);
                 return;
             }
             suggester.rebuild(Collections.singleton(getNamedIndexDir(p)));
@@ -201,7 +213,7 @@ public class SuggesterServiceImpl implements SuggesterService {
     }
 
     private NamedIndexDir getNamedIndexDir(final Project p) {
-        Path indexPath = Paths.get(env.getConfiguration().getDataRoot(), IndexDatabase.INDEX_DIR, p.getPath());
+        Path indexPath = Paths.get(env.getDataRootPath(), IndexDatabase.INDEX_DIR, p.getPath());
         return new NamedIndexDir(p.getName(), indexPath);
     }
 
@@ -270,22 +282,27 @@ public class SuggesterServiceImpl implements SuggesterService {
     }
 
     private void initSuggester() {
-        Configuration config = env.getConfiguration();
-
-        SuggesterConfig suggesterConfig = config.getSuggesterConfig();
+        SuggesterConfig suggesterConfig = env.getSuggesterConfig();
         if (!suggesterConfig.isEnabled()) {
             logger.log(Level.INFO, "Suggester disabled");
             return;
         }
 
-        File suggesterDir = new File(config.getDataRoot(), IndexDatabase.SUGGESTER_DIR);
+        File suggesterDir = new File(env.getDataRootPath(), IndexDatabase.SUGGESTER_DIR);
+        int rebuildParalleismLevel = (int) (((float) suggesterConfig.getRebuildThreadPoolSizeInNcpuPercent() / 100)
+                * Runtime.getRuntime().availableProcessors());
+        if (rebuildParalleismLevel == 0) {
+            rebuildParalleismLevel = 1;
+        }
+        logger.log(Level.FINER, "Suggester rebuild parallelism level: " + rebuildParalleismLevel);
         suggester = new Suggester(suggesterDir,
                 suggesterConfig.getMaxResults(),
                 Duration.ofSeconds(suggesterConfig.getBuildTerminationTime()),
                 suggesterConfig.isAllowMostPopular(),
                 env.isProjectsEnabled(),
                 suggesterConfig.getAllowedFields(),
-                suggesterConfig.getTimeThreshold());
+                suggesterConfig.getTimeThreshold(),
+                rebuildParalleismLevel);
 
         new Thread(() -> {
             suggester.init(getAllProjectIndexDirs());
@@ -294,7 +311,7 @@ public class SuggesterServiceImpl implements SuggesterService {
     }
 
     private Collection<NamedIndexDir> getAllProjectIndexDirs() {
-        if (env.getConfiguration().isProjectsEnabled()) {
+        if (env.isProjectsEnabled()) {
             return env.getProjectList().stream()
                     .filter(Project::isIndexed)
                     .map(this::getNamedIndexDir)
@@ -323,7 +340,7 @@ public class SuggesterServiceImpl implements SuggesterService {
     private void scheduleRebuild() {
         cancelScheduledRebuild();
 
-        if (!env.getConfiguration().getSuggesterConfig().isAllowMostPopular()) { // no need to rebuild
+        if (!env.getSuggesterConfig().isAllowMostPopular()) { // no need to rebuild
             logger.log(Level.INFO, "Suggester rebuild not scheduled");
             return;
         }
@@ -347,7 +364,7 @@ public class SuggesterServiceImpl implements SuggesterService {
     }
 
     private Duration getTimeToNextRebuild() {
-        String cronDefinition = env.getConfiguration().getSuggesterConfig().getRebuildCronConfig();
+        String cronDefinition = env.getSuggesterConfig().getRebuildCronConfig();
         if (cronDefinition == null) {
             return null;
         }

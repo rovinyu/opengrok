@@ -19,20 +19,12 @@
 
 /*
  * Copyright (c) 2007, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Portions Copyright (c) 2018, Chris Fraire <cfraire@me.com>.
  */
 package org.opengrok.web;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import javax.servlet.ServletContext;
-import javax.servlet.ServletContextEvent;
-import javax.servlet.ServletContextListener;
-import javax.servlet.ServletRequestEvent;
-import javax.servlet.ServletRequestListener;
-import org.json.simple.parser.ParseException;
 import org.opengrok.indexer.Info;
+import org.opengrok.indexer.analysis.AnalyzerGuru;
 import org.opengrok.indexer.authorization.AuthorizationFramework;
 import org.opengrok.indexer.configuration.RuntimeEnvironment;
 import org.opengrok.indexer.logger.LoggerFactory;
@@ -40,8 +32,21 @@ import org.opengrok.indexer.web.PageConfig;
 import org.opengrok.indexer.web.SearchHelper;
 import org.opengrok.web.api.v1.suggester.provider.service.SuggesterServiceFactory;
 
+import javax.servlet.ServletContext;
+import javax.servlet.ServletContextEvent;
+import javax.servlet.ServletContextListener;
+import javax.servlet.ServletRequestEvent;
+import javax.servlet.ServletRequestListener;
+import java.io.File;
+import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import static org.opengrok.indexer.util.StatisticsUtils.loadStatistics;
+import static org.opengrok.indexer.util.StatisticsUtils.saveStatistics;
+
 /**
- * Initialize webapp context
+ * Initialize webapp context.
  *
  * @author Trond Norbye
  */
@@ -81,25 +86,22 @@ public final class WebappListener
         env.getAuthorizationFramework().reload();
 
         try {
-            RuntimeEnvironment.getInstance().loadStatistics();
+            loadStatistics();
         } catch (IOException ex) {
             LOGGER.log(Level.INFO, "Could not load statistics from a file.", ex);
-        } catch (ParseException ex) {
-            LOGGER.log(Level.SEVERE, "Could not parse statistics from a file.", ex);
         }
 
-        if (env.getConfiguration().getPluginDirectory() != null && env.isAuthorizationWatchdog()) {
-            RuntimeEnvironment.getInstance().startWatchDogService(new File(env.getConfiguration().getPluginDirectory()));
+        String pluginDirectory = env.getPluginDirectory();
+        if (pluginDirectory != null && env.isAuthorizationWatchdog()) {
+            RuntimeEnvironment.getInstance().watchDog.start(new File(pluginDirectory));
         }
 
         env.startExpirationTimer();
 
         try {
-            RuntimeEnvironment.getInstance().loadStatistics();
+            loadStatistics();
         } catch (IOException ex) {
             LOGGER.log(Level.INFO, "Could not load statistics from a file.", ex);
-        } catch (ParseException ex) {
-            LOGGER.log(Level.SEVERE, "Could not parse statistics from a file.", ex);
         }
     }
 
@@ -108,10 +110,12 @@ public final class WebappListener
      */
     @Override
     public void contextDestroyed(final ServletContextEvent servletContextEvent) {
-        RuntimeEnvironment.getInstance().stopWatchDogService();
-        RuntimeEnvironment.getInstance().stopExpirationTimer();
+        RuntimeEnvironment env = RuntimeEnvironment.getInstance();
+        env.getIndexerParallelizer().bounce();
+        env.watchDog.stop();
+        env.stopExpirationTimer();
         try {
-            RuntimeEnvironment.getInstance().saveStatistics();
+            saveStatistics();
         } catch (IOException ex) {
             LOGGER.log(Level.SEVERE, "Could not save statistics into a file.", ex);
         }
@@ -131,6 +135,8 @@ public final class WebappListener
         if (sh != null) {
             sh.destroy();
         }
+
+        AnalyzerGuru.returnAnalyzers();
     }
 
     /**

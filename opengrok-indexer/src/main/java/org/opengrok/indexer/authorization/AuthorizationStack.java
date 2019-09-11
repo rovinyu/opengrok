@@ -19,11 +19,13 @@
 
 /*
  * Copyright (c) 2017, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Portions Copyright (c) 2018, Chris Fraire <cfraire@me.com>.
  */
 package org.opengrok.indexer.authorization;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.logging.Level;
@@ -34,7 +36,7 @@ import org.opengrok.indexer.logger.LoggerFactory;
 import org.opengrok.indexer.web.Statistics;
 
 /**
- * This is a subclass of {@link AuthorizationEntity} implementing the methods to
+ * Subclass of {@link AuthorizationEntity}. It implements the methods to
  * be able to contain and making decision for:
  * <ul>
  * <li>other stacks</li>
@@ -45,6 +47,8 @@ import org.opengrok.indexer.web.Statistics;
  */
 public class AuthorizationStack extends AuthorizationEntity {
 
+    private static final long serialVersionUID = -2116160303238347415L;
+
     private static final Logger LOGGER = LoggerFactory.getLogger(AuthorizationStack.class);
 
     private List<AuthorizationEntity> stack = new ArrayList<>();
@@ -53,7 +57,7 @@ public class AuthorizationStack extends AuthorizationEntity {
     }
 
     /**
-     * Copy constructor from another stack
+     * Copy constructor from another stack.
      * <ul>
      * <li>copy the superclass {@link AuthorizationEntity}</li>
      * <li>perform a deep copy of the contained stack (using
@@ -75,7 +79,7 @@ public class AuthorizationStack extends AuthorizationEntity {
     }
 
     /**
-     * Get the value of stack
+     * Get the value of {@code stack}.
      *
      * @return the current stack
      */
@@ -84,7 +88,7 @@ public class AuthorizationStack extends AuthorizationEntity {
     }
 
     /**
-     * Set the value of stack
+     * Set the value of {@code stack}.
      *
      * @param s the new stack
      */
@@ -131,9 +135,8 @@ public class AuthorizationStack extends AuthorizationEntity {
         getCurrentSetup().putAll(getSetup());
 
         LOGGER.log(Level.INFO, "[{0}] Stack \"{1}\" is loading.",
-                new Object[]{
-                    getFlag().toString().toUpperCase(),
-                    getName()});
+                new Object[]{getFlag().toString().toUpperCase(Locale.ROOT),
+                getName()});
 
         // fill properly the "forGroups" and "forProjects" fields
         processTargetGroupsAndProjects();
@@ -154,7 +157,7 @@ public class AuthorizationStack extends AuthorizationEntity {
 
         LOGGER.log(Level.INFO, "[{0}] Stack \"{1}\" is {2}.",
                 new Object[]{
-                    getFlag().toString().toUpperCase(),
+                    getFlag().toString().toUpperCase(Locale.ROOT),
                     getName(),
                     isWorking() ? "ready" : "not fully ok"});
     }
@@ -239,7 +242,7 @@ public class AuthorizationStack extends AuthorizationEntity {
 
                 LOGGER.log(Level.FINEST, "AuthEntity \"{0}\" [{1}] testing a name \"{2}\" => {3}",
                         new Object[]{authEntity.getName(), authEntity.getFlag(), entity.getName(),
-                            pluginDecision ? "true" : "false"});
+                                pluginDecision ? "true" : "false"});
 
                 if (!pluginDecision && authEntity.isRequired()) {
                     // required sets a failure but still invokes all other plugins
@@ -254,6 +257,10 @@ public class AuthorizationStack extends AuthorizationEntity {
                     overallDecision = true;
                     break;
                 }
+            } catch (AuthorizationException ex) {
+                // Propagate up so that proper HTTP error can be given.
+                LOGGER.log(Level.FINEST, "got authorization exception: " + ex.getMessage());
+                throw ex;
             } catch (Throwable ex) {
                 LOGGER.log(Level.WARNING,
                         String.format("AuthEntity \"%s\" has failed the testing of \"%s\" with an exception.",
@@ -315,7 +322,7 @@ public class AuthorizationStack extends AuthorizationEntity {
     }
 
     /**
-     * Clone the stack:
+     * Clones the stack. Performs:
      * <ul>
      * <li>copy the superclass {@link AuthorizationEntity}</li>
      * <li>perform a deep copy of the contained stack</li>

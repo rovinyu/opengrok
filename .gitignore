@@ -3,6 +3,7 @@
 /nbproject/configs/*.properties
 tags
 TAGS
+!opengrok-web/src/main/webapp/WEB-INF/tags
 build
 dist
 coverage
@@ -51,3 +52,11 @@ pmd.bat
 .idea
 *.pyc
 .wercker
+.DS_Store
+.project
+.settings/
+.vscode/
+*/bin/
+.classpath
+.checkstyle
+

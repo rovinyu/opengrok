@@ -27,13 +27,9 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.Reader;
-import java.text.DateFormat;
 import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.Locale;
-
 import org.opengrok.indexer.util.IOUtils;
 
 /**
@@ -50,7 +46,6 @@ class SCCSHistoryParser {
     int field;
     boolean sep;
     StringBuilder record = new StringBuilder(128);
-    DateFormat sccsDateFormat;
     Reader in;
 
     // Record fields
@@ -58,9 +53,13 @@ class SCCSHistoryParser {
     private Date rdate;
     private String author;
     private String comment;
+    private SCCSRepository repository;
 
-    History parse(File file, Repository repos) throws HistoryException {
-        sccsDateFormat = repos.getDateFormat();
+    SCCSHistoryParser(SCCSRepository repository) {
+        this.repository = repository;
+    }
+
+    History parse(File file) throws HistoryException {
         try {
             return parseFile(file);
         } catch (IOException e) {
@@ -83,7 +82,6 @@ class SCCSHistoryParser {
         passRecord = true;
         active = true;
         field = 0;
-        sccsDateFormat =  new SimpleDateFormat("yy/MM/dd", Locale.getDefault());
 
         ArrayList<HistoryEntry> entries = new ArrayList<HistoryEntry>();
         while (next()) {
@@ -113,8 +111,8 @@ class SCCSHistoryParser {
         sep = true;
         record.setLength(0);
         int c;
-        while ((c = read()) > 01) {
-            record.append((char)c);
+        while ((c = read()) > 1) {
+            record.append((char) c);
         }
         // to flag that revision needs to be re populated if you really need it
         revision = null;
@@ -132,7 +130,7 @@ class SCCSHistoryParser {
             if (f.length > 5) {
                 revision = f[1];
                 try {
-                    rdate = sccsDateFormat.parse(f[2] + " " + f[3]);
+                    rdate = repository.parse(f[2] + " " + f[3]);
                 } catch (ParseException e) {
                     rdate = null;
                     //
@@ -188,16 +186,16 @@ class SCCSHistoryParser {
 
     private int read() throws java.io.IOException {
         int c, d, dt;
-        while((c = in.read()) != -1) {
+        while ((c = in.read()) != -1) {
             switch (c) { //NOPMD
-                case 01:
+                case 1:
                     d = in.read();
                     switch (d) {
                         case 'c':
                         case 't':
                         case 'u':
                             d = in.read();
-                            if(d != ' ') {
+                            if (d != ' ') {
                                 return (d);
                             }
                             pass = true;
@@ -222,11 +220,11 @@ class SCCSHistoryParser {
                         case 'D':
                         case 'E':
                         case 'T':
-                            return(-1);
+                            return -1;
                         case 'e':
                             pass = false;
                             if (sep && passRecord) {
-                                return 01;
+                                return 1;
                             }
                             passRecord = true;
                             break;
@@ -237,31 +235,29 @@ class SCCSHistoryParser {
                 case ' ':
                     if (passRecord) {
                         if (field > 0) {
-                            field ++;
+                            field++;
                             pass = true;
                         }
-                        if(field > 5) {
+                        if (field > 5) {
                             field = 0;
                             pass = false;
-                            return(c);
+                            return c;
                         }
                     }
                 default:
                     if (pass && passRecord) {
-                        return(c);
+                        return c;
                     }
             }
         }
-        return(-1);
+        return -1;
     }
 
-    protected static File getSCCSFile(File file)
-    {
+    protected static File getSCCSFile(File file) {
         return getSCCSFile(file.getParent(), file.getName());
     }
 
-    protected static File getSCCSFile(String parent, String name)
-    {
+    protected static File getSCCSFile(String parent, String name) {
         File f = new File(parent + "/SCCS/s." + name);
         if (!f.exists()) {
             return null;

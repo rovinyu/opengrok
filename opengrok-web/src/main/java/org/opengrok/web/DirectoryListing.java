@@ -18,7 +18,7 @@
  */
 
 /*
- * Copyright (c) 2005, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2019, Oracle and/or its affiliates. All rights reserved.
  * Portions Copyright 2011 Jens Elkner.
  * Portions Copyright (c) 2017-2018, Chris Fraire <cfraire@me.com>.
  */
@@ -45,11 +45,11 @@ import org.opengrok.indexer.web.EftarFileReader;
 import org.opengrok.indexer.web.Util;
 
 /**
- * Generates HTML listing of a Directory
+ * Generates HTML listing of a Directory.
  */
 public class DirectoryListing {
 
-    protected final static String DIRECTORY_SIZE_PLACEHOLDER = "-";
+    protected static final String DIRECTORY_SIZE_PLACEHOLDER = "-";
     private final EftarFileReader desc;
     private final long now;
 
@@ -126,8 +126,15 @@ public class DirectoryListing {
      * {@link #extraListTo(java.lang.String, java.io.File, java.io.Writer, java.lang.String, java.util.List)}
      * with {@code contextPath}, {@code dir}, {@code out}, {@code path},
      * and a list mapped from {@code files}.
+     * @param contextPath context path
+     * @param dir directory
+     * @param out writer
+     * @param path path
+     * @param files list of files
      * @return see
      * {@link #extraListTo(java.lang.String, java.io.File, java.io.Writer, java.lang.String, java.util.List)}
+     * @throws HistoryException history exception
+     * @throws IOException I/O exception
      */
     public List<String> listTo(String contextPath, File dir, Writer out,
         String path, List<String> files)
@@ -211,9 +218,9 @@ public class DirectoryListing {
                     continue;
                 }
                 String filename = child.getName();
-                if (filename.startsWith("README") || filename.endsWith("README")
-                    || filename.startsWith("readme"))
-                {
+                String filenameLower = filename.toLowerCase(Locale.ROOT);
+                if (filenameLower.startsWith("readme") ||
+                        filenameLower.endsWith("readme")) {
                     readMes.add(filename);
                 }
                 boolean isDir = child.isDirectory();

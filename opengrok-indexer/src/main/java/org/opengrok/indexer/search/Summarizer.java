@@ -77,14 +77,12 @@ public class Summarizer {
         Set<String> tokenSet = new TreeSet<>();
         int numTerms = 0;
 
-        /**
-         */
         public void addToken(String token) {
             tokenSet.add(token);
         }
 
         /**
-         * Return how many unique toks we have
+         * Return how many unique tokens we have.
          */
         public int numUniqueTokens() {
             return tokenSet.size();
@@ -113,7 +111,7 @@ public class Summarizer {
         }
 
         /**
-         * Return an Enum for all the fragments
+         * Return an Enum for all the fragments.
          */
         public List<Summary.Fragment> elements() {
             return passages;
@@ -125,7 +123,7 @@ public class Summarizer {
      *
      * @param text input text
      * @return summary of hits
-     * @throws java.io.IOException
+     * @throws java.io.IOException I/O exception
      */
     public Summary getSummary(String text) throws IOException {
         if (text == null) {
@@ -293,7 +291,7 @@ public class Summarizer {
 
     private class SToken extends PackedTokenAttributeImpl {
 
-        public SToken(char[] startTermBuffer, int termBufferOffset, int termBufferLength, int start, int end) {
+        SToken(char[] startTermBuffer, int termBufferOffset, int termBufferLength, int start, int end) {
             copyBuffer(startTermBuffer, termBufferOffset, termBufferLength);
             setOffset(start, end);
         }
@@ -317,7 +315,7 @@ public class Summarizer {
     }
 
     /**
-     * Get the terms from a query and adds them to highlight a stream of tokens
+     * Get the terms from a query and adds them to highlight a stream of tokens.
      *
      * @param query
      */
@@ -336,7 +334,7 @@ public class Summarizer {
     }
 
     private void getBooleans(BooleanQuery query) {
-        for (BooleanClause clause : (BooleanQuery) query) {
+        for (BooleanClause clause : query) {
             if (!clause.isProhibited()) {
                 getTerms(clause.getQuery());
             }

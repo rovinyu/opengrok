@@ -18,16 +18,18 @@
  */
 
  /*
- * Copyright (c) 2017, 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2017, 2019 Oracle and/or its affiliates. All rights reserved.
  */
 package org.opengrok.indexer.web;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map.Entry;
-
 import org.junit.Before;
 import org.junit.Test;
 import org.opengrok.indexer.web.Scripts.Script;
@@ -53,12 +55,15 @@ public class ScriptsTest {
 
         assertEquals(3, scripts.size());
 
-        assertEquals(scripts.get(0).getScriptData(), "http://example.com/main1.js");
-        assertEquals(scripts.get(0).getPriority(), 0);
-        assertEquals(scripts.get(1).getScriptData(), "http://example.com/main2.js");
-        assertEquals(scripts.get(1).getPriority(), 0);
-        assertEquals(scripts.get(2).getScriptData(), "http://example.com/main3.js");
-        assertEquals(scripts.get(2).getPriority(), 0);
+        List<Script> listScripts = new ArrayList<>();
+        scripts.forEach(listScripts::add);
+
+        assertEquals(listScripts.get(0).getScriptData(), "http://example.com/main1.js");
+        assertEquals(listScripts.get(0).getPriority(), 0);
+        assertEquals(listScripts.get(1).getScriptData(), "http://example.com/main2.js");
+        assertEquals(listScripts.get(1).getPriority(), 0);
+        assertEquals(listScripts.get(2).getScriptData(), "http://example.com/main3.js");
+        assertEquals(listScripts.get(2).getPriority(), 0);
     }
 
     @Test
@@ -69,12 +74,15 @@ public class ScriptsTest {
 
         assertEquals(3, scripts.size());
 
-        assertEquals(scripts.get(0).getScriptData(), "http://example.com/main2.js");
-        assertEquals(scripts.get(0).getPriority(), 1);
-        assertEquals(scripts.get(1).getScriptData(), "http://example.com/main3.js");
-        assertEquals(scripts.get(1).getPriority(), 2);
-        assertEquals(scripts.get(2).getScriptData(), "http://example.com/main1.js");
-        assertEquals(scripts.get(2).getPriority(), 3);
+        List<Script> listScripts = new ArrayList<>();
+        scripts.forEach(listScripts::add);
+
+        assertEquals(listScripts.get(0).getScriptData(), "http://example.com/main2.js");
+        assertEquals(listScripts.get(0).getPriority(), 1);
+        assertEquals(listScripts.get(1).getScriptData(), "http://example.com/main3.js");
+        assertEquals(listScripts.get(1).getPriority(), 2);
+        assertEquals(listScripts.get(2).getScriptData(), "http://example.com/main1.js");
+        assertEquals(listScripts.get(2).getPriority(), 3);
     }
 
     @Test
@@ -101,10 +109,10 @@ public class ScriptsTest {
 
     @Test
     public void testLookup() {
-        scripts.addScript("", "utils");
-        scripts.addScript("", "jquery");
-        scripts.addScript("", "diff");
-        scripts.addScript("", "jquery-tablesorter");
+        scripts.addScript("", "utils", Scripts.Type.MINIFIED);
+        scripts.addScript("", "jquery", Scripts.Type.MINIFIED);
+        scripts.addScript("", "diff", Scripts.Type.MINIFIED);
+        scripts.addScript("", "jquery-tablesorter", Scripts.Type.MINIFIED);
 
         assertEquals(4, scripts.size());
 
@@ -136,10 +144,10 @@ public class ScriptsTest {
     @Test
     public void testLookupWithContextPath() {
         String contextPath = "/source";
-        scripts.addScript(contextPath, "utils");
-        scripts.addScript(contextPath, "jquery");
-        scripts.addScript(contextPath, "diff");
-        scripts.addScript(contextPath, "jquery-tablesorter");
+        scripts.addScript(contextPath, "utils", Scripts.Type.MINIFIED);
+        scripts.addScript(contextPath, "jquery", Scripts.Type.MINIFIED);
+        scripts.addScript(contextPath, "diff", Scripts.Type.MINIFIED);
+        scripts.addScript(contextPath, "jquery-tablesorter", Scripts.Type.MINIFIED);
 
         assertEquals(4, scripts.size());
 
@@ -167,4 +175,17 @@ public class ScriptsTest {
                                     + " data-priority=\"" + s.getValue().getPriority() + "\"></script>"));
         }
     }
+
+    @Test
+    public void testAddMinified() {
+        scripts.addScript("", "utils", Scripts.Type.MINIFIED);
+        assertTrue(scripts.iterator().next().scriptData.endsWith("min.js"));
+    }
+
+    @Test
+    public void testAddDebug() {
+        scripts.addScript("", "utils", Scripts.Type.DEBUG);
+        assertFalse(scripts.iterator().next().scriptData.endsWith("min.js"));
+    }
+
 }

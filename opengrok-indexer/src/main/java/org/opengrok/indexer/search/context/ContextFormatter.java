@@ -54,13 +54,7 @@ public class ContextFormatter extends PassageFormatter {
         ContextFormatter.class);
 
     /**
-     * Matches a non-word character:
-     * <pre>
-     * {@code
-     * (?U)\W
-     * }
-     * </pre>
-     * (Edit above and paste below [in NetBeans] for easy String escaping.)
+     * Matches a non-word character.
      */
     private static final Pattern NONWORD_CHAR = Pattern.compile("(?U)\\W");
 
@@ -78,7 +72,7 @@ public class ContextFormatter extends PassageFormatter {
     private int moreLimit;
 
     /**
-     * Cached splitter, keyed by {@link #originalText}
+     * Cached splitter, keyed by {@link #originalText}.
      */
     private SourceSplitter splitter;
     private String originalText;
@@ -164,7 +158,7 @@ public class ContextFormatter extends PassageFormatter {
 
     /**
      * Sets the optional definitions.
-     * @param value
+     * @param value definitions
      */
     public void setDefs(Definitions value) {
         this.defs = value;
@@ -180,7 +174,7 @@ public class ContextFormatter extends PassageFormatter {
 
     /**
      * Sets the optional scopes to use.
-     * @param value
+     * @param value scopes
      */
     public void setScopes(Scopes value) {
         this.scopes = value;
@@ -224,9 +218,9 @@ public class ContextFormatter extends PassageFormatter {
             }
 
             String line = splitter.getLine(lhi.getLineno());
-            Matcher eofmatcher = StringUtils.STANDARD_EOL.matcher(line);
-            if (eofmatcher.find()) {
-                line = line.substring(0, eofmatcher.start());
+            Matcher eolMatcher = StringUtils.STANDARD_EOL.matcher(line);
+            if (eolMatcher.find()) {
+                line = line.substring(0, eolMatcher.start());
             }
 
             try {
@@ -234,68 +228,49 @@ public class ContextFormatter extends PassageFormatter {
                 startLine(bld, lineUrl, lhi.getLineno());
                 int loff = 0;
                 int hioff = 0;
-                boolean didBold = false;
                 while (loff < line.length()) {
+                    // If there are no more markups, use all remaining text.
                     if (hioff >= lhi.countMarkups() ||
                             lhi.getMarkup(hioff).getLineStart() >=
                             line.length()) {
-                        // If there are no more markups, use all remaining.
+                        lhi.hsub(bld, line, loff);
+                        break;
+                    }
+
+                    PhraseHighlight phi = lhi.getMarkup(hioff++);
+
+                    /*
+                     * If the highlight is a sub-string wholly within the
+                     * line, add it to the `marks' list.
+                     */
+                    if (phi.getLineStart() >= 0 &&
+                            phi.getLineEnd() <= line.length()) {
+                        marks.add(line.substring(phi.getLineStart(),
+                                phi.getLineEnd()));
+                    }
+
+                    // Append any line text preceding the phrase highlight ...
+                    if (phi.getLineStart() >= 0) {
+                        lhi.hsub(bld, line, loff, phi.getLineStart());
+                        loff += phi.getLineStart() - loff;
+                    }
+                    // ... then start the BOLD.
+                    bld.append(HtmlConsts.B);
+
+                    // Include the text of the highlight ...
+                    if (phi.getLineEnd() >= line.length()) {
                         lhi.hsub(bld, line, loff);
                         loff = line.length();
                     } else {
-                        PhraseHighlight phi = lhi.getMarkup(hioff++);
-
-                        /*
-                         * If the highlight is a sub-string wholly within the
-                         * line, add it to the `marks' list.
-                         */
-                        if (phi.getLineStart() >= 0 && phi.getLineEnd() >= 0 &&
-                                phi.getLineEnd() <= line.length()) {
-                            marks.add(line.substring(phi.getLineStart(),
-                                phi.getLineEnd()));
-                        }
-
-                        if (phi.getLineStart() < 0) {
-                            if (!didBold) {
-                                bld.append(HtmlConsts.B);
-                            }
-                            if (phi.getLineEnd() != Integer.MAX_VALUE) {
-                                lhi.hsub(bld, line, loff, phi.getLineEnd());
-                                loff += phi.getLineEnd() - loff;
-                            } else {
-                                lhi.hsub(bld, line, loff);
-                                loff = line.length();
-                            }
-                            bld.append(HtmlConsts.ZB);
-                            didBold = false;
-                        } else {
-                            lhi.hsub(bld, line, loff, phi.getLineStart());
-                            loff += phi.getLineStart() - loff;
-                            if (!didBold) {
-                                bld.append(HtmlConsts.B);
-                                didBold = true;
-                            }
-                        }
-                        if (phi.getLineEnd() == Integer.MAX_VALUE) {
-                            lhi.hsub(bld, line, loff);
-                            loff = line.length();
-                        } else {
-                            lhi.hsub(bld, line, loff, phi.getLineEnd());
-                            loff += phi.getLineEnd() - loff;
-                            if (didBold) {
-                                bld.append(HtmlConsts.ZB);
-                                didBold = false;
-                            }
-                        }
+                        lhi.hsub(bld, line, loff, phi.getLineEnd());
+                        loff += phi.getLineEnd() - loff;
                     }
+                    // ... then end the BOLD.
+                    bld.append(HtmlConsts.ZB);
                 }
 
-                if (didBold) {
-                    bld.append(HtmlConsts.ZB);
-                    // no need to unset didBold
-                }
                 finishLine(bld, lhi.getLineno(), marks);
-                // regardless of true EOF, write a <br/>
+                // Regardless of true EOL, write a <br/>.
                 bld.append(HtmlConsts.BR);
                 /**
                  * Appending a LF here would hurt the more.jsp view, while

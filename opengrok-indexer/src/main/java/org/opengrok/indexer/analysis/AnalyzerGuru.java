@@ -19,7 +19,7 @@
 
 /*
  * Copyright (c) 2005, 2018, Oracle and/or its affiliates. All rights reserved.
- * Portions Copyright (c) 2017-2018, Chris Fraire <cfraire@me.com>.
+ * Portions Copyright (c) 2017-2019, Chris Fraire <cfraire@me.com>.
  */
 package org.opengrok.indexer.analysis;
 
@@ -48,7 +48,6 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import org.apache.lucene.document.DateTools;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
@@ -58,7 +57,6 @@ import org.apache.lucene.document.SortedDocValuesField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.document.TextField;
 import org.apache.lucene.util.BytesRef;
-import org.opengrok.indexer.analysis.FileAnalyzer.Genre;
 import org.opengrok.indexer.analysis.FileAnalyzerFactory.Matcher;
 import org.opengrok.indexer.analysis.ada.AdaAnalyzerFactory;
 import org.opengrok.indexer.analysis.archive.BZip2AnalyzerFactory;
@@ -67,6 +65,7 @@ import org.opengrok.indexer.analysis.archive.TarAnalyzerFactory;
 import org.opengrok.indexer.analysis.archive.ZipAnalyzerFactory;
 import org.opengrok.indexer.analysis.c.CAnalyzerFactory;
 import org.opengrok.indexer.analysis.c.CxxAnalyzerFactory;
+import org.opengrok.indexer.analysis.clojure.ClojureAnalyzerFactory;
 import org.opengrok.indexer.analysis.csharp.CSharpAnalyzerFactory;
 import org.opengrok.indexer.analysis.data.IgnorantAnalyzerFactory;
 import org.opengrok.indexer.analysis.data.ImageAnalyzerFactory;
@@ -80,30 +79,30 @@ import org.opengrok.indexer.analysis.executables.JavaClassAnalyzerFactory;
 import org.opengrok.indexer.analysis.fortran.FortranAnalyzerFactory;
 import org.opengrok.indexer.analysis.golang.GolangAnalyzerFactory;
 import org.opengrok.indexer.analysis.haskell.HaskellAnalyzerFactory;
-import org.opengrok.indexer.analysis.lua.LuaAnalyzerFactory;
 import org.opengrok.indexer.analysis.java.JavaAnalyzerFactory;
 import org.opengrok.indexer.analysis.javascript.JavaScriptAnalyzerFactory;
+import org.opengrok.indexer.analysis.json.JsonAnalyzerFactory;
+import org.opengrok.indexer.analysis.kotlin.KotlinAnalyzerFactory;
 import org.opengrok.indexer.analysis.lisp.LispAnalyzerFactory;
+import org.opengrok.indexer.analysis.lua.LuaAnalyzerFactory;
 import org.opengrok.indexer.analysis.pascal.PascalAnalyzerFactory;
 import org.opengrok.indexer.analysis.perl.PerlAnalyzerFactory;
 import org.opengrok.indexer.analysis.php.PhpAnalyzerFactory;
 import org.opengrok.indexer.analysis.plain.PlainAnalyzerFactory;
 import org.opengrok.indexer.analysis.plain.XMLAnalyzerFactory;
+import org.opengrok.indexer.analysis.powershell.PowershellAnalyzerFactory;
 import org.opengrok.indexer.analysis.python.PythonAnalyzerFactory;
+import org.opengrok.indexer.analysis.ruby.RubyAnalyzerFactory;
 import org.opengrok.indexer.analysis.rust.RustAnalyzerFactory;
 import org.opengrok.indexer.analysis.scala.ScalaAnalyzerFactory;
-import org.opengrok.indexer.analysis.clojure.ClojureAnalyzerFactory;
-import org.opengrok.indexer.analysis.json.JsonAnalyzerFactory;
-import org.opengrok.indexer.analysis.kotlin.KotlinAnalyzerFactory;
 import org.opengrok.indexer.analysis.sh.ShAnalyzerFactory;
-import org.opengrok.indexer.analysis.powershell.PowershellAnalyzerFactory;
-import org.opengrok.indexer.analysis.ruby.RubyAnalyzerFactory;
 import org.opengrok.indexer.analysis.sql.PLSQLAnalyzerFactory;
 import org.opengrok.indexer.analysis.sql.SQLAnalyzerFactory;
 import org.opengrok.indexer.analysis.swift.SwiftAnalyzerFactory;
 import org.opengrok.indexer.analysis.tcl.TclAnalyzerFactory;
 import org.opengrok.indexer.analysis.uue.UuencodeAnalyzerFactory;
 import org.opengrok.indexer.analysis.vb.VBAnalyzerFactory;
+import org.opengrok.indexer.analysis.verilog.VerilogAnalyzerFactory;
 import org.opengrok.indexer.configuration.Project;
 import org.opengrok.indexer.configuration.RuntimeEnvironment;
 import org.opengrok.indexer.history.Annotation;
@@ -129,14 +128,13 @@ public class AnalyzerGuru {
 
     /**
      * The maximum number of characters (multi-byte if a BOM is identified) to
-     * read from the input stream to be used for magic string matching
+     * read from the input stream to be used for magic string matching.
      */
     private static final int OPENING_MAX_CHARS = 100;
 
     /**
      * Set to 16K -- though debugging shows it would do with only 8K+3
-     * (standard buffer for Java BufferedInputStream plus 3 bytes for largest
-     * UTF BOM) 
+     * (standard buffer for Java BufferedInputStream plus 3 bytes for largest UTF BOM).
      */
     private static final int MARK_READ_LIMIT = 1024 * 16;
 
@@ -153,28 +151,28 @@ public class AnalyzerGuru {
     /**
      * The default {@code FileAnalyzerFactory} instance.
      */
-    private static final FileAnalyzerFactory DEFAULT_ANALYZER_FACTORY = new FileAnalyzerFactory();
+    private static final AnalyzerFactory DEFAULT_ANALYZER_FACTORY = new FileAnalyzerFactory();
 
     /**
      * Map from file names to analyzer factories.
      */
-    private static final Map<String, FileAnalyzerFactory> FILE_NAMES = new HashMap<>();
+    private static final Map<String, AnalyzerFactory> FILE_NAMES = new HashMap<>();
 
     /**
      * Map from file extensions to analyzer factories.
      */
-    private static final Map<String, FileAnalyzerFactory> ext = new HashMap<>();
+    private static final Map<String, AnalyzerFactory> ext = new HashMap<>();
 
     /**
      * Map from file prefixes to analyzer factories.
      */
-    private static final Map<String, FileAnalyzerFactory> pre = new HashMap<>();
+    private static final Map<String, AnalyzerFactory> pre = new HashMap<>();
 
     /**
      * Appended when
-     * {@link #addExtension(java.lang.String, org.opengrok.indexer.analysis.FileAnalyzerFactory)}
+     * {@link #addExtension(java.lang.String, AnalyzerFactory)}
      * or
-     * {@link #addPrefix(java.lang.String, org.opengrok.indexer.analysis.FileAnalyzerFactory)}
+     * {@link #addPrefix(java.lang.String, AnalyzerFactory)}
      * are called to augment the value in {@link #getVersionNo()}.
      */
     private static final TreeSet<String> CUSTOMIZATION_KEYS = new TreeSet<>();
@@ -182,7 +180,7 @@ public class AnalyzerGuru {
     private static int customizationHashCode;
 
     /**
-     * Descending string length comparator for magics
+     * Descending string length comparator for magics.
      */
     private static final Comparator<String> descStrlenComparator =
         new Comparator<String>() {
@@ -203,7 +201,7 @@ public class AnalyzerGuru {
     /**
      * Map from magic strings to analyzer factories.
      */
-    private static final SortedMap<String, FileAnalyzerFactory> magics =
+    private static final SortedMap<String, AnalyzerFactory> magics =
         new TreeMap<>(descStrlenComparator);
 
     /**
@@ -215,7 +213,7 @@ public class AnalyzerGuru {
     /**
      * List of all registered {@code FileAnalyzerFactory} instances.
      */
-    private static final List<FileAnalyzerFactory> factories = new ArrayList<>();
+    private static final List<AnalyzerFactory> factories = new ArrayList<>();
     
     /**
      * Names of all analysis packages.
@@ -231,14 +229,14 @@ public class AnalyzerGuru {
 
     /**
      * Maps from {@link FileAnalyzer#getFileTypeName()} to
-     * {@link FileAnalyzerFactory}
+     * {@link FileAnalyzerFactory}.
      */
-    private static final Map<String, FileAnalyzerFactory> FILETYPE_FACTORIES =
+    private static final Map<String, AnalyzerFactory> FILETYPE_FACTORIES =
             new HashMap<>();
 
     /**
      * Maps from {@link FileAnalyzer#getFileTypeName()} to
-     * {@link FileAnalyzer#getVersionNo()}
+     * {@link FileAnalyzer#getVersionNo()}.
      */
     private static final Map<String, Long> ANALYZER_VERSIONS = new HashMap<>();
 
@@ -250,7 +248,7 @@ public class AnalyzerGuru {
      */
     static {
         try {
-            FileAnalyzerFactory[] analyzers = {
+            AnalyzerFactory[] analyzers = {
                 DEFAULT_ANALYZER_FACTORY,
                 new IgnorantAnalyzerFactory(),
                 new BZip2AnalyzerFactory(),
@@ -295,14 +293,15 @@ public class AnalyzerGuru {
                 new PascalAnalyzerFactory(),
                 new AdaAnalyzerFactory(),
                 new RubyAnalyzerFactory(),
-                new EiffelAnalyzerFactory()
+                new EiffelAnalyzerFactory(),
+                new VerilogAnalyzerFactory()
             };
 
-            for (FileAnalyzerFactory analyzer : analyzers) {
+            for (AnalyzerFactory analyzer : analyzers) {
                 registerAnalyzer(analyzer);
             }
 
-            for (FileAnalyzerFactory analyzer : analyzers) {
+            for (AnalyzerFactory analyzer : analyzers) {
                 if (analyzer.getName() != null && !analyzer.getName().isEmpty()) {
                     fileTypeDescriptions.put(analyzer.getAnalyzer().getFileTypeName(), analyzer.getName());
                 }
@@ -319,27 +318,28 @@ public class AnalyzerGuru {
 
     /**
      * Gets a version number to be used to tag documents examined by the guru so
-     * that analysis can be re-done later if a stored version number is
-     * different from the current implementation or if customization has been
-     * done by the user to change the {@link AnalyzerGuru} operation.
+     * that {@link AbstractAnalyzer} selection can be re-done later if a stored
+     * version number is different from the current implementation or if guru
+     * factory registrations are modified by the user to change the guru
+     * operation.
      * <p>
      * The static part of the version is bumped in a release when e.g. new
      * {@link FileAnalyzerFactory} subclasses are registered or when existing
      * {@link FileAnalyzerFactory} subclasses are revised to target more or
      * different files.
      * @return a value whose lower 32-bits are a static value
-     * 20171230_00
+     * 20190211_00
      * for the current implementation and whose higher-32 bits are non-zero if
-     * {@link #addExtension(java.lang.String, org.opengrok.indexer.analysis.FileAnalyzerFactory)}
+     * {@link #addExtension(java.lang.String, AnalyzerFactory)}
      * or
-     * {@link #addPrefix(java.lang.String, org.opengrok.indexer.analysis.FileAnalyzerFactory)}
+     * {@link #addPrefix(java.lang.String, AnalyzerFactory)}
      * has been called.
      */
     public static long getVersionNo() {
-        final int ver32 = 20171230_00; // Edit comment above too!
+        final int ver32 = 20190211_00; // Edit comment above too!
         long ver = ver32;
         if (customizationHashCode != 0) {
-            ver |= (long)customizationHashCode << 32;
+            ver |= (long) customizationHashCode << 32;
         }
         return ver;
     }
@@ -360,15 +360,15 @@ public class AnalyzerGuru {
         return Collections.unmodifiableMap(ANALYZER_VERSIONS);
     }
 
-    public static Map<String, FileAnalyzerFactory> getExtensionsMap() {
+    public static Map<String, AnalyzerFactory> getExtensionsMap() {
         return Collections.unmodifiableMap(ext);
     }
 
-    public static Map<String, FileAnalyzerFactory> getPrefixesMap() {
+    public static Map<String, AnalyzerFactory> getPrefixesMap() {
         return Collections.unmodifiableMap(pre);
     }
 
-    public static Map<String, FileAnalyzerFactory> getMagicsMap() {
+    public static Map<String, AnalyzerFactory> getMagicsMap() {
         return Collections.unmodifiableMap(magics);
     }
 
@@ -380,38 +380,38 @@ public class AnalyzerGuru {
         return Collections.unmodifiableMap(fileTypeDescriptions);
     }
 
-    public List<FileAnalyzerFactory> getAnalyzerFactories() {
+    public List<AnalyzerFactory> getAnalyzerFactories() {
         return Collections.unmodifiableList(factories);
     }
 
     /**
      * Register a {@code FileAnalyzerFactory} instance.
      */
-    private static void registerAnalyzer(FileAnalyzerFactory factory) {
+    private static void registerAnalyzer(AnalyzerFactory factory) {
         for (String name : factory.getFileNames()) {
-            FileAnalyzerFactory old = FILE_NAMES.put(name, factory);
+            AnalyzerFactory old = FILE_NAMES.put(name, factory);
             assert old == null :
                     "name '" + name + "' used in multiple analyzers";
         }
         for (String prefix : factory.getPrefixes()) {
-            FileAnalyzerFactory old = pre.put(prefix, factory);
+            AnalyzerFactory old = pre.put(prefix, factory);
             assert old == null :
                     "prefix '" + prefix + "' used in multiple analyzers";
         }
         for (String suffix : factory.getSuffixes()) {
-            FileAnalyzerFactory old = ext.put(suffix, factory);
+            AnalyzerFactory old = ext.put(suffix, factory);
             assert old == null :
                     "suffix '" + suffix + "' used in multiple analyzers";
         }
         for (String magic : factory.getMagicStrings()) {
-            FileAnalyzerFactory old = magics.put(magic, factory);
+            AnalyzerFactory old = magics.put(magic, factory);
             assert old == null :
                     "magic '" + magic + "' used in multiple analyzers";
         }
         matchers.addAll(factory.getMatchers());
         factories.add(factory);
 
-        FileAnalyzer fa = factory.getAnalyzer();
+        AbstractAnalyzer fa = factory.getAnalyzer();
         String fileTypeName = fa.getFileTypeName();
         FILETYPE_FACTORIES.put(fileTypeName, factory);
         ANALYZER_VERSIONS.put(fileTypeName, fa.getVersionNo());
@@ -426,8 +426,8 @@ public class AnalyzerGuru {
      * extension (if you pass null as the analyzer, you will disable the
      * analyzer used for that extension)
      */
-    public static void addPrefix(String prefix, FileAnalyzerFactory factory) {
-        FileAnalyzerFactory oldFactory;
+    public static void addPrefix(String prefix, AnalyzerFactory factory) {
+        AnalyzerFactory oldFactory;
         if (factory == null) {
             oldFactory = pre.remove(prefix);
         } else {
@@ -449,8 +449,8 @@ public class AnalyzerGuru {
      * analyzer used for that extension)
      */
     public static void addExtension(String extension,
-            FileAnalyzerFactory factory) {
-        FileAnalyzerFactory oldFactory;
+            AnalyzerFactory factory) {
+        AnalyzerFactory oldFactory;
         if (factory == null) {
             oldFactory = ext.remove(extension);
         } else {
@@ -467,7 +467,7 @@ public class AnalyzerGuru {
      *
      * @return default FileAnalyzer
      */
-    public static FileAnalyzer getAnalyzer() {
+    public static AbstractAnalyzer getAnalyzer() {
         return DEFAULT_ANALYZER_FACTORY.getAnalyzer();
     }
 
@@ -477,8 +477,8 @@ public class AnalyzerGuru {
      * @param fileTypeName a defined name
      * @return a defined instance if known or otherwise {@code null}
      */
-    public static FileAnalyzer getAnalyzer(String fileTypeName) {
-        FileAnalyzerFactory factory = FILETYPE_FACTORIES.get(fileTypeName);
+    public static AbstractAnalyzer getAnalyzer(String fileTypeName) {
+        AnalyzerFactory factory = FILETYPE_FACTORIES.get(fileTypeName);
         return factory == null ? null : factory.getAnalyzer();
     }
 
@@ -492,18 +492,27 @@ public class AnalyzerGuru {
      * @throws java.io.IOException If an error occurs while accessing the data
      * in the input stream.
      */
-    public static FileAnalyzer getAnalyzer(InputStream in, String file) throws IOException {
-        FileAnalyzerFactory factory = find(in, file);
+    public static AbstractAnalyzer getAnalyzer(InputStream in, String file) throws IOException {
+        AnalyzerFactory factory = find(in, file);
         if (factory == null) {
-            FileAnalyzer defaultAnalyzer = getAnalyzer();
-            if (LOGGER.isLoggable(Level.FINE)) {
-                LOGGER.log(Level.FINE, "{0}: fallback {1}",
+            AbstractAnalyzer defaultAnalyzer = getAnalyzer();
+            if (LOGGER.isLoggable(Level.FINEST)) {
+                LOGGER.log(Level.FINEST, "{0}: fallback {1}",
                     new Object[]{file,
                     defaultAnalyzer.getClass().getSimpleName() });
             }
             return defaultAnalyzer;
         }
         return factory.getAnalyzer();
+    }
+
+    /**
+     * Free resources associated with all registered analyzers.
+     */
+    public static void returnAnalyzers() {
+        for (AnalyzerFactory analyzer : factories) {
+            analyzer.returnAnalyzer();
+        }
     }
 
     /**
@@ -520,15 +529,12 @@ public class AnalyzerGuru {
      * an ineligible link
      */
     public void populateDocument(Document doc, File file, String path,
-        FileAnalyzer fa, Writer xrefOut) throws IOException,
+        AbstractAnalyzer fa, Writer xrefOut) throws IOException,
             InterruptedException, ForbiddenSymlinkException {
-
-        // Sanitize Windows path delimiters in order not to conflict with Lucene escape character
-        // and also so the path appears as correctly formed URI in the search results.
-        path = path.replace("\\", "/");
 
         String date = DateTools.timeToString(file.lastModified(),
                 DateTools.Resolution.MILLISECOND);
+        path = Util.fixPathIfWindows(path);
         doc.add(new Field(QueryBuilder.U, Util.path2uid(path, date),
                 string_ft_stored_nanalyzed_norms));
         doc.add(new Field(QueryBuilder.FULLPATH, file.getAbsolutePath(),
@@ -572,8 +578,8 @@ public class AnalyzerGuru {
         }
 
         if (fa != null) {
-            Genre g = fa.getGenre();
-            if (g == Genre.PLAIN || g == Genre.XREFABLE || g == Genre.HTML) {
+            AbstractAnalyzer.Genre g = fa.getGenre();
+            if (g == AbstractAnalyzer.Genre.PLAIN || g == AbstractAnalyzer.Genre.XREFABLE || g == AbstractAnalyzer.Genre.HTML) {
                 doc.add(new Field(QueryBuilder.T, g.typeName(), string_ft_stored_nanalyzed_norms));
             }
             fa.analyze(doc, StreamSource.fromFile(file), xrefOut);
@@ -595,7 +601,7 @@ public class AnalyzerGuru {
      * stream.
      */
     public static String getContentType(InputStream in, String file) throws IOException {
-        FileAnalyzerFactory factory = find(in, file);
+        AnalyzerFactory factory = find(in, file);
         String type = null;
         if (factory != null) {
             type = factory.getContentType();
@@ -604,7 +610,7 @@ public class AnalyzerGuru {
     }
 
     /**
-     * Write a browse-able version of the file
+     * Write a browse-able version of the file.
      *
      * @param factory The analyzer factory for this file type
      * @param in The input stream containing the data
@@ -614,12 +620,12 @@ public class AnalyzerGuru {
      * @param project Project the file belongs to
      * @throws java.io.IOException If an error occurs while creating the output
      */
-    public static void writeXref(FileAnalyzerFactory factory, Reader in,
+    public static void writeXref(AnalyzerFactory factory, Reader in,
             Writer out, Definitions defs,
             Annotation annotation, Project project)
             throws IOException {
         Reader input = in;
-        if (factory.getGenre() == Genre.PLAIN) {
+        if (factory.getGenre() == AbstractAnalyzer.Genre.PLAIN) {
             // This is some kind of text file, so we need to expand tabs to
             // spaces to match the project's tab settings.
             input = ExpandTabsReader.wrap(in, project);
@@ -630,7 +636,7 @@ public class AnalyzerGuru {
         args.setAnnotation(annotation);
         args.setProject(project);
 
-        FileAnalyzer analyzer = factory.getAnalyzer();
+        AbstractAnalyzer analyzer = factory.getAnalyzer();
         RuntimeEnvironment env = RuntimeEnvironment.getInstance();
         analyzer.setScopesEnabled(env.isScopesEnabled());
         analyzer.setFoldingEnabled(env.isFoldingEnabled());
@@ -651,7 +657,7 @@ public class AnalyzerGuru {
      * @throws java.io.IOException if an error occurs while creating the output
      */
     public static void writeDumpedXref(String contextPath,
-            FileAnalyzerFactory factory, Reader in, Writer out,
+            AnalyzerFactory factory, Reader in, Writer out,
             Definitions defs, Annotation annotation, Project project)
             throws IOException {
 
@@ -667,33 +673,33 @@ public class AnalyzerGuru {
     }
 
     /**
-     * Get the genre of a file
+     * Get the genre of a file.
      *
      * @param file The file to inspect
      * @return The genre suitable to decide how to display the file
      */
-    public static Genre getGenre(String file) {
+    public static AbstractAnalyzer.Genre getGenre(String file) {
         return getGenre(find(file));
     }
 
     /**
-     * Get the genre of a bulk of data
+     * Get the genre of a bulk of data.
      *
      * @param in A stream containing the data
      * @return The genre suitable to decide how to display the file
      * @throws java.io.IOException If an error occurs while getting the content
      */
-    public static Genre getGenre(InputStream in) throws IOException {
+    public static AbstractAnalyzer.Genre getGenre(InputStream in) throws IOException {
         return getGenre(find(in));
     }
 
     /**
-     * Get the genre for a named class (this is most likely an analyzer)
+     * Get the genre for a named class (this is most likely an analyzer).
      *
      * @param factory the analyzer factory to get the genre for
      * @return The genre of this class (null if not found)
      */
-    public static Genre getGenre(FileAnalyzerFactory factory) {
+    public static AbstractAnalyzer.Genre getGenre(AnalyzerFactory factory) {
         if (factory != null) {
             return factory.getGenre();
         }
@@ -706,7 +712,7 @@ public class AnalyzerGuru {
      * @param fileTypeName a defined instance
      * @return a defined instance or {@code null}
      */
-    public static FileAnalyzerFactory findByFileTypeName(String fileTypeName) {
+    public static AnalyzerFactory findByFileTypeName(String fileTypeName) {
         return FILETYPE_FACTORIES.get(fileTypeName);
     }
 
@@ -727,7 +733,7 @@ public class AnalyzerGuru {
      * @throws NoSuchMethodException if no-argument constructor could not be found
      * @throws InvocationTargetException if the underlying constructor throws an exception
      */
-    public static FileAnalyzerFactory findFactory(String factoryClassName)
+    public static AnalyzerFactory findFactory(String factoryClassName)
             throws ClassNotFoundException, IllegalAccessException, InstantiationException, NoSuchMethodException, 
             InvocationTargetException {
         Class<?> fcn = null;
@@ -760,9 +766,9 @@ public class AnalyzerGuru {
         // Build analysis package name list first time only
         if (analysisPkgNames.isEmpty()) {
             Package[] p = Package.getPackages();
-            for(Package pp : p){
+            for (Package pp : p) {
                 String pname = pp.getName();
-                if (pname.indexOf(".analysis.") != -1) {
+                if (pname.contains(".analysis.")) {
                     analysisPkgNames.add(pname);
                 }
             }
@@ -774,11 +780,11 @@ public class AnalyzerGuru {
         // all language parsers: 
         //      <language>Analyzer, <language>AnalyzerFactory
         
-        if (simpleName.indexOf("Analyzer") == -1) {
+        if (!simpleName.contains("Analyzer")) {
             simpleName += "Analyzer";
         }
         
-        if (simpleName.indexOf("Factory") == -1) {
+        if (!simpleName.contains("Factory")) {
             simpleName += "Factory";
         }
 
@@ -809,14 +815,14 @@ public class AnalyzerGuru {
      * @throws NoSuchMethodException if no-argument constructor could not be found
      * @throws InvocationTargetException if the underlying constructor throws an exception
      */
-    private static FileAnalyzerFactory findFactory(Class<?> factoryClass)
+    private static AnalyzerFactory findFactory(Class<?> factoryClass)
             throws InstantiationException, IllegalAccessException, NoSuchMethodException, InvocationTargetException {
-        for (FileAnalyzerFactory f : factories) {
+        for (AnalyzerFactory f : factories) {
             if (f.getClass() == factoryClass) {
                 return f;
             }
         }
-        FileAnalyzerFactory f = (FileAnalyzerFactory) factoryClass.getDeclaredConstructor().newInstance();
+        AnalyzerFactory f = (AnalyzerFactory) factoryClass.getDeclaredConstructor().newInstance();
         registerAnalyzer(f);
         return f;
     }
@@ -834,9 +840,9 @@ public class AnalyzerGuru {
      * @return the analyzer factory to use
      * @throws java.io.IOException If a problem occurs while reading the data
      */
-    public static FileAnalyzerFactory find(InputStream in, String file)
+    public static AnalyzerFactory find(InputStream in, String file)
             throws IOException {
-        FileAnalyzerFactory factory = find(file);
+        AnalyzerFactory factory = find(file);
         // TODO above is not that great, since if 2 analyzers share one extension
         // then only the first one registered will own it
         // it would be cool if above could return more analyzers and below would
@@ -853,7 +859,7 @@ public class AnalyzerGuru {
      * @param file The file name to get the analyzer for
      * @return the analyzer factory to use
      */
-    public static FileAnalyzerFactory find(String file) {
+    public static AnalyzerFactory find(String file) {
         String path = file;
         int i;
 
@@ -865,15 +871,14 @@ public class AnalyzerGuru {
 
         int dotpos = path.lastIndexOf('.');
         if (dotpos >= 0) {
-            FileAnalyzerFactory factory;
+            AnalyzerFactory factory;
 
             // Try matching the prefix.
             if (dotpos > 0) {
-                factory
-                        = pre.get(path.substring(0, dotpos).toUpperCase(Locale.getDefault()));
+                factory = pre.get(path.substring(0, dotpos).toUpperCase(Locale.ROOT));
                 if (factory != null) {
-                    if (LOGGER.isLoggable(Level.FINER)) {
-                        LOGGER.log(Level.FINER, "{0}: chosen by prefix: {1}",
+                    if (LOGGER.isLoggable(Level.FINEST)) {
+                        LOGGER.log(Level.FINEST, "{0}: chosen by prefix: {1}",
                             new Object[]{file,
                             factory.getClass().getSimpleName() });
                     }
@@ -884,11 +889,10 @@ public class AnalyzerGuru {
             // Now try matching the suffix. We kind of consider this order (first
             // prefix then suffix) to be workable although for sure there can be
             // cases when this does not work.
-            factory
-                    = ext.get(path.substring(dotpos + 1).toUpperCase(Locale.getDefault()));
+            factory = ext.get(path.substring(dotpos + 1).toUpperCase(Locale.ROOT));
             if (factory != null) {
-                if (LOGGER.isLoggable(Level.FINER)) {
-                    LOGGER.log(Level.FINER, "{0}: chosen by suffix: {1}",
+                if (LOGGER.isLoggable(Level.FINEST)) {
+                    LOGGER.log(Level.FINEST, "{0}: chosen by suffix: {1}",
                         new Object[]{file,
                         factory.getClass().getSimpleName() });
                 }
@@ -897,24 +901,24 @@ public class AnalyzerGuru {
         }
 
         // file doesn't have any of the prefix or extensions we know, try full match
-        return FILE_NAMES.get(path.toUpperCase(Locale.getDefault()));
+        return FILE_NAMES.get(path.toUpperCase(Locale.ROOT));
     }
 
     /**
-     * Finds a suitable analyzer class for the data in this stream
+     * Finds a suitable analyzer class for the data in this stream.
      *
      * @param in The stream containing the data to analyze
      * @return the analyzer factory to use
      * @throws java.io.IOException if an error occurs while reading data from
      * the stream
      */
-    public static FileAnalyzerFactory find(InputStream in) throws IOException {
+    public static AnalyzerFactory find(InputStream in) throws IOException {
         return findForStream(in, "<anonymous>");
     }
 
     /**
      * Finds a suitable analyzer class for the data in this stream
-     * corresponding to a file of the specified name
+     * corresponding to a file of the specified name.
      *
      * @param in The stream containing the data to analyze
      * @param file The file name to get the analyzer for
@@ -922,7 +926,7 @@ public class AnalyzerGuru {
      * @throws java.io.IOException if an error occurs while reading data from
      * the stream
      */
-    private static FileAnalyzerFactory findForStream(InputStream in,
+    private static AnalyzerFactory findForStream(InputStream in,
         String file) throws IOException {
 
         in.mark(MAGIC_BYTES_NUM);
@@ -940,15 +944,15 @@ public class AnalyzerGuru {
             content = Arrays.copyOf(content, len);
         }
 
-        FileAnalyzerFactory fac;
+        AnalyzerFactory fac;
 
         // First, do precise-magic Matcher matching
         for (FileAnalyzerFactory.Matcher matcher : matchers) {
             if (matcher.getIsPreciseMagic()) {
                 fac = matcher.isMagic(content, in);
                 if (fac != null) {
-                    if (LOGGER.isLoggable(Level.FINER)) {
-                        LOGGER.log(Level.FINER,
+                    if (LOGGER.isLoggable(Level.FINEST)) {
+                        LOGGER.log(Level.FINEST,
                             "{0}: chosen by precise magic: {1}", new Object[]{
                             file, fac.getClass().getSimpleName() });
                     }
@@ -969,8 +973,8 @@ public class AnalyzerGuru {
             if (!matcher.getIsPreciseMagic()) {
                 fac = matcher.isMagic(content, in);
                 if (fac != null) {
-                    if (LOGGER.isLoggable(Level.FINER)) {
-                        LOGGER.log(Level.FINER,
+                    if (LOGGER.isLoggable(Level.FINEST)) {
+                        LOGGER.log(Level.FINEST,
                             "{0}: chosen by imprecise magic: {1}",
                             new Object[]{file,
                             fac.getClass().getSimpleName() });
@@ -983,16 +987,16 @@ public class AnalyzerGuru {
         return null;
     }
 
-    private static FileAnalyzerFactory findMagicString(String opening,
+    private static AnalyzerFactory findMagicString(String opening,
         String file)
             throws IOException {
 
         // first, try to look up two words in magics
         String fragment = getWords(opening, 2);
-        FileAnalyzerFactory fac = magics.get(fragment);
+        AnalyzerFactory fac = magics.get(fragment);
         if (fac != null) {
-            if (LOGGER.isLoggable(Level.FINER)) {
-                LOGGER.log(Level.FINER, "{0}: chosen by magic {2}: {1}",
+            if (LOGGER.isLoggable(Level.FINEST)) {
+                LOGGER.log(Level.FINEST, "{0}: chosen by magic {2}: {1}",
                     new Object[]{file, fac.getClass().getSimpleName(),
                     fragment});
             }
@@ -1003,8 +1007,8 @@ public class AnalyzerGuru {
         fragment = getWords(opening, 1);
         fac = magics.get(fragment);
         if (fac != null) {
-            if (LOGGER.isLoggable(Level.FINER)) {
-                LOGGER.log(Level.FINER, "{0}: chosen by magic {2}: {1}",
+            if (LOGGER.isLoggable(Level.FINEST)) {
+                LOGGER.log(Level.FINEST, "{0}: chosen by magic {2}: {1}",
                     new Object[]{file, fac.getClass().getSimpleName(),
                     fragment});
             }
@@ -1012,13 +1016,13 @@ public class AnalyzerGuru {
         }
 
         // try to match initial substrings (DESC strlen)
-        for (Map.Entry<String, FileAnalyzerFactory> entry :
+        for (Map.Entry<String, AnalyzerFactory> entry :
             magics.entrySet()) {
             String magic = entry.getKey();
             if (opening.startsWith(magic)) {
                 fac = entry.getValue();
-                if (LOGGER.isLoggable(Level.FINER)) {
-                    LOGGER.log(Level.FINER,
+                if (LOGGER.isLoggable(Level.FINEST)) {
+                    LOGGER.log(Level.FINEST,
                         "{0}: chosen by magic(substr) {2}: {1}", new Object[]{
                         file, fac.getClass().getSimpleName(), magic});
                 }
@@ -1096,7 +1100,7 @@ public class AnalyzerGuru {
             if (++nRead > OPENING_MAX_CHARS) {
                 break;
             }
-            char c = (char)r;
+            char c = (char) r;
             boolean isWhitespace = Character.isWhitespace(c);
             if (!sawNonWhitespace) {
                 if (isWhitespace) {
@@ -1140,8 +1144,8 @@ public class AnalyzerGuru {
         customizationHashCode = Objects.hash(keys);
     }
 
-    private static boolean factoriesDifferent(FileAnalyzerFactory a,
-            FileAnalyzerFactory b) {
+    private static boolean factoriesDifferent(AnalyzerFactory a,
+            AnalyzerFactory b) {
         String a_name = null;
         if (a != null) {
             a_name = a.getName();

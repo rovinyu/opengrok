@@ -18,25 +18,30 @@
  */
 
 /*
- * Copyright (c) 2015, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2015, 2019, Oracle and/or its affiliates. All rights reserved.
+ * Portions Copyright (c) 2018, Chris Fraire <cfraire@me.com>.
+ * Portions Copyright (c) 2019, Krystof Tulinger <k.tulinger@seznam.cz>.
  */
 package org.opengrok.indexer.web;
 
+import static org.opengrok.indexer.web.PageConfig.OPEN_GROK_PROJECT;
+
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import org.opengrok.indexer.configuration.Group;
 import org.opengrok.indexer.configuration.Project;
 import org.opengrok.indexer.history.RepositoryInfo;
 
-import static org.opengrok.indexer.web.PageConfig.OPEN_GROK_PROJECT;
-
 /**
- * Preprocessing of projects, repositories and groups for the UI
+ * Preprocessing of projects, repositories and groups for the UI.
  *
  * @author Krystof Tulinger
  */
@@ -55,25 +60,27 @@ public final class ProjectHelper {
     private static final String PROJECT_HELPER_SUBGROUPS_OF = "project_helper_subgroups_of_";
     private static final String PROJECT_HELPER_FAVOURITE_GROUP = "project_helper_favourite_group";
 
+    private static final Comparator<RepositoryInfo> REPOSITORY_NAME_COMPARATOR = Comparator.comparing(RepositoryInfo::getDirectoryName);
+
     private PageConfig cfg;
     /**
-     * Set of groups
+     * Set of groups.
      */
     private final Set<Group> groups;
     /**
-     * Set of projects (not repositories) without group
+     * Set of projects (not repositories) without group.
      */
     private final Set<Project> ungroupedProjects;
     /**
-     * Set of all repositories without group
+     * Set of all repositories without group.
      */
     private final Set<Project> ungroupedRepositories;
     /**
-     * Set of all projects with group
+     * Set of all projects with group.
      */
     private final Set<Project> allProjects = new TreeSet<>();
     /**
-     * Set of all repositories with group
+     * Set of all repositories with group.
      */
     private final Set<Project> allRepositories = new TreeSet<>();
 
@@ -119,6 +126,23 @@ public final class ProjectHelper {
         Map<Project, List<RepositoryInfo>> map = cfg.getEnv().getProjectRepositoriesMap();
         List<RepositoryInfo> info = map.get(p);
         return info == null ? new ArrayList<>() : new ArrayList<>(info);
+    }
+
+    /**
+     * Get repository info list for particular project. A copy of the list is
+     * returned always to allow concurrent modifications of the list in the
+     * caller. The items in the list shall not be modified concurrently, though.
+     * This list is sorted with respect {@link #REPOSITORY_NAME_COMPARATOR}.
+     *
+     * @param p the project for which we find the repository info list
+     * @return Copy of a list of repository info or empty list if no info is
+     * found
+     */
+    public List<RepositoryInfo> getSortedRepositoryInfo(Project p) {
+        return getRepositoryInfo(p)
+                .stream()
+                .sorted(REPOSITORY_NAME_COMPARATOR)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -245,7 +269,8 @@ public final class ProjectHelper {
         if (!cfg.isAllowed(g)) {
             return new TreeSet<>();
         }
-        return cacheProjects(PROJECT_HELPER_GROUPED_PROJECT_GROUP + g.getName().toLowerCase(), g.getProjects());
+        return cacheProjects(PROJECT_HELPER_GROUPED_PROJECT_GROUP +
+                g.getName().toLowerCase(Locale.ROOT), g.getProjects());
     }
 
     /**
@@ -256,7 +281,8 @@ public final class ProjectHelper {
         if (!cfg.isAllowed(g)) {
             return new TreeSet<>();
         }
-        return cacheProjects(PROJECT_HELPER_GROUPED_REPOSITORIES_GROUP + g.getName().toLowerCase(), g.getRepositories());
+        return cacheProjects(PROJECT_HELPER_GROUPED_REPOSITORIES_GROUP +
+                g.getName().toLowerCase(Locale.ROOT), g.getRepositories());
     }
 
     /**
@@ -330,7 +356,8 @@ public final class ProjectHelper {
         if (!cfg.isAllowed(g)) {
             return new TreeSet<>();
         }
-        return cacheGroups(PROJECT_HELPER_SUBGROUPS_OF + g.getName().toLowerCase(), g.getSubgroups());
+        return cacheGroups(PROJECT_HELPER_SUBGROUPS_OF +
+                g.getName().toLowerCase(Locale.ROOT), g.getSubgroups());
     }
 
     /**
@@ -421,7 +448,7 @@ public final class ProjectHelper {
     }
 
     /**
-     * Checks if the project is a favourite project
+     * Checks if the project is a favourite project.
      *
      * @param project project
      * @return true if it is favourite

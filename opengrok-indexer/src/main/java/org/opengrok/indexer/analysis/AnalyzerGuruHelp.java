@@ -33,6 +33,10 @@ import java.util.stream.Collectors;
  * Represents a utility class to show the user details of {@link AnalyzerGuru}.
  */
 public class AnalyzerGuruHelp {
+
+    private AnalyzerGuruHelp() {
+    }
+
     /**
      * Gets a reportable hunk of text that details
      * {@link AnalyzerGuru#getPrefixesMap()},
@@ -77,7 +81,7 @@ public class AnalyzerGuruHelp {
         return b.toString();
     }
 
-    private static String reportable(FileAnalyzerFactory fac) {
+    private static String reportable(AnalyzerFactory fac) {
         String nm = fac.getName();
         return nm == null ? fac.getClass().getSimpleName() : nm;
     }
@@ -182,7 +186,7 @@ public class AnalyzerGuruHelp {
     }
 
     private static List<MappedFactory> byKey(
-        Map<String, FileAnalyzerFactory> mapped) {
+        Map<String, AnalyzerFactory> mapped) {
 
         List<MappedFactory> res = mapped.entrySet().stream().map((t) -> {
             return new MappedFactory(t.getKey(), t.getValue());
@@ -196,7 +200,7 @@ public class AnalyzerGuruHelp {
     }
 
     private static List<MappedFactory> byFactory(
-        Map<String, FileAnalyzerFactory> mapped) {
+        Map<String, AnalyzerFactory> mapped) {
 
         List<MappedFactory> res = mapped.entrySet().stream().map((t) -> {
             return new MappedFactory(t.getKey(), t.getValue());
@@ -218,8 +222,9 @@ public class AnalyzerGuruHelp {
 
     private static class MappedFactory {
         public final String key;
-        public final FileAnalyzerFactory fac;
-        public MappedFactory(String key, FileAnalyzerFactory fac) {
+        public final AnalyzerFactory fac;
+
+        MappedFactory(String key, AnalyzerFactory fac) {
             this.key = key;
             this.fac = fac;
         }

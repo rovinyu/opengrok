@@ -19,12 +19,14 @@
 
 /*
  * Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
- * Portions Copyright (c) 2017, Chris Fraire <cfraire@me.com>.
+ * Portions Copyright (c) 2017-2018, Chris Fraire <cfraire@me.com>.
  */
 package org.opengrok.indexer.authorization;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
@@ -67,6 +69,14 @@ public class AuthorizationFrameworkTest {
                 NewTest(true, createAllowedGroup()),
                 NewTest(true, createUnallowedProject()),
                 NewTest(true, createUnallowedGroup()))
+            },
+            // Test that null entities will result in denial.
+            {
+                    new StackSetup(
+                        NewStack(AuthControlFlag.REQUIRED),
+                        // no plugins should return true however we have null entities here
+                        NewTest(false, (Project) null),
+                        NewTest(false, (Group) null))
             },
             // -------------------------------------------------------------- //
             //
@@ -656,14 +666,15 @@ public class AuthorizationFrameworkTest {
         String format = "%s <%s> was <%s> for entity %s";
 
         for (TestCase innerSetup : setup.setup) {
+            String entityName = (innerSetup.entity == null ? "null" : innerSetup.entity.getName());
             try {
                 actual = framework.isAllowed(innerSetup.request, (Group) innerSetup.entity);
-                Assert.assertEquals(String.format(format, setup.toString(), innerSetup.expected, actual, innerSetup.entity.getName()),
+                Assert.assertEquals(String.format(format, setup.toString(), innerSetup.expected, actual, entityName),
                         innerSetup.expected,
                         actual);
             } catch (ClassCastException ex) {
                 actual = framework.isAllowed(innerSetup.request, (Project) innerSetup.entity);
-                Assert.assertEquals(String.format(format, setup.toString(), innerSetup.expected, actual, innerSetup.entity.getName()),
+                Assert.assertEquals(String.format(format, setup.toString(), innerSetup.expected, actual, entityName),
                         innerSetup.expected,
                         actual);
             }
@@ -691,7 +702,12 @@ public class AuthorizationFrameworkTest {
     }
 
     static private HttpServletRequest createRequest() {
-        return new DummyHttpServletRequest();
+        return new DummyHttpServletRequest() {
+            @Override
+            public Map<String, String[]> getParameterMap() {
+                return new HashMap<>();
+            }
+        };
     }
 
     static private IAuthorizationPlugin createAllowedPrefixPlugin() {
@@ -791,7 +807,7 @@ public class AuthorizationFrameworkTest {
 
         @Override
         public String toString() {
-            return "expected <" + expected + "> for entity " + entity.getName();
+            return "expected <" + expected + "> for entity " + (entity == null ? "null" : entity.getName());
         }
     }
 
@@ -807,9 +823,10 @@ public class AuthorizationFrameworkTest {
 
         @Override
         public String toString() {
-            return stack.getFlag().toString().toUpperCase() + "[" + printStack(stack) + "] " + "-> {\n"
-                    + setup.stream().map((t) -> t.toString()).collect(Collectors.joining(",\n")) + "\n"
-                    + "}";
+            return stack.getFlag().toString().toUpperCase(Locale.ROOT) + "[" +
+                    printStack(stack) + "] " + "-> {\n" + setup.stream().map(
+                    (t) -> t.toString()).collect(Collectors.joining(",\n")) +
+                    "\n" + "}";
         }
 
         private String printStack(AuthorizationStack s) {
@@ -818,7 +835,9 @@ public class AuthorizationFrameworkTest {
                 if (entity instanceof AuthorizationPlugin) {
                     x += ((AuthorizationPlugin) entity).getPlugin().toString() + ", ";
                 } else {
-                    x += entity.getFlag().toString().toUpperCase() + "[" + printStack((AuthorizationStack) entity) + "], ";
+                    x += entity.getFlag().toString().toUpperCase(Locale.ROOT) +
+                            "[" + printStack((AuthorizationStack) entity) +
+                            "], ";
                 }
             }
             return x.replaceAll(", $", "");

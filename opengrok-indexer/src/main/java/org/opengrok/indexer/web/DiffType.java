@@ -19,7 +19,7 @@
 
 /*
  * Copyright 2009 - 2011 Jens Elkner.
- * Copyright (c) 2009, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2009, 2019, Oracle and/or its affiliates. All rights reserved.
  */
 package org.opengrok.indexer.web;
 
@@ -31,20 +31,20 @@ package org.opengrok.indexer.web;
  */
 public enum DiffType {
 
-    /** side-by-side diff */
+    /** side-by-side diff. */
     SIDEBYSIDE('s', "sdiff"),
-    /** unified diff (i.e. with context lines) */
+    /** unified diff (i.e. with context lines). */
     UNIFIED('u', "udiff"),
-    /** traditional ed diff (no context lines) */
+    /** traditional ed diff (no context lines). */
     TEXT('t', "text"),
-    /** the old version of the file (before changes applied) */
+    /** the old version of the file (before changes applied). */
     OLD('o', "old"),
-    /** the new version of the file (after changes applied) */
+    /** the new version of the file (after changes applied). */
     NEW('n', "new");
     private final char abbrev;
     private final String name;
 
-    private DiffType(char abbrev, String name) {
+    DiffType(char abbrev, String name) {
         this.abbrev = abbrev;
         this.name = name;
     }
@@ -54,7 +54,7 @@ public enum DiffType {
      * @param c abbreviation to check.
      * @return {@code null} if not found, the diff type otherwise.
      */
-    public static final DiffType get(char c) {
+    public static DiffType get(char c) {
         for (DiffType d : values()) {
             if (c == d.abbrev) {
                 return d;
@@ -68,7 +68,7 @@ public enum DiffType {
      * @param c abbreviation or name to check.
      * @return {@code null} if not found, the diff type otherwise.
      */
-    public static final DiffType get(String c) {
+    public static DiffType get(String c) {
         if (c == null || c.length() == 0) {
             return null;
         }

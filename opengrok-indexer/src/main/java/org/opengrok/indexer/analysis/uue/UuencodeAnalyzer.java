@@ -27,30 +27,31 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
 import org.apache.lucene.document.Document;
-import org.opengrok.indexer.analysis.FileAnalyzer;
-import org.opengrok.indexer.analysis.FileAnalyzerFactory;
+import org.opengrok.indexer.analysis.AbstractAnalyzer;
+import org.opengrok.indexer.analysis.AnalyzerFactory;
 import org.opengrok.indexer.analysis.JFlexTokenizer;
 import org.opengrok.indexer.analysis.JFlexXref;
+import org.opengrok.indexer.analysis.OGKTextField;
 import org.opengrok.indexer.analysis.StreamSource;
 import org.opengrok.indexer.analysis.TextAnalyzer;
-import org.opengrok.indexer.analysis.OGKTextField;
 import org.opengrok.indexer.analysis.WriteXrefArgs;
 import org.opengrok.indexer.search.QueryBuilder;
 
 /**
- * Analyzes [tn]roff files
+ * Analyzes [tn]roff files.
  * Created on September 30, 2005
  *
  * @author Chandan
  */
 public class UuencodeAnalyzer extends TextAnalyzer {
+
     /**
-     * Creates a new instance of UuencodeAnalyzer
+     * Creates a new instance of UuencodeAnalyzer.
      * @param factory defined instance for the analyzer
      */
-    protected UuencodeAnalyzer(FileAnalyzerFactory factory) {
+    protected UuencodeAnalyzer(AnalyzerFactory factory) {
         super(factory, new JFlexTokenizer(new UuencodeFullTokenizer(
-            FileAnalyzer.dummyReader)));
+                AbstractAnalyzer.DUMMY_READER)));
     }
 
     /**

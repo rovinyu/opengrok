@@ -19,6 +19,7 @@
 
 /*
  * Copyright (c) 2007, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Portions Copyright (c) 2018, Chris Fraire <cfraire@me.com>.
  */
 package org.opengrok.indexer.analysis.sql;
 
@@ -50,15 +51,13 @@ public final class Consts {
         // Util class, can not be constructed.
     }
 
-    private static void populateKeywordSet(Set<String> set, String file)
-            throws IOException
-    {
-        String line,lline;
+    private static void populateKeywordSet(Set<String> set, String file) throws IOException {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(
             Consts.class.getResourceAsStream(file), StandardCharsets.UTF_8))) {
+            String line;
             while ((line = reader.readLine()) != null) {
-                line=line.trim();
-                lline = line.toLowerCase(Locale.US);
+                line = line.trim();
+                String lline = line.toLowerCase(Locale.ROOT);
                 if (line.charAt(0) != '#') {
                     set.add(line);
                     set.add(lline);

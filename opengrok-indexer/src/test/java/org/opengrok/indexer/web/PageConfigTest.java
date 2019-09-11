@@ -22,6 +22,13 @@
  */
 package org.opengrok.indexer.web;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -32,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import javax.servlet.http.HttpServletRequest;
 import org.junit.AfterClass;
+import org.junit.Assume;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
@@ -42,13 +50,12 @@ import org.opengrok.indexer.authorization.TestPlugin;
 import org.opengrok.indexer.condition.ConditionalRun;
 import org.opengrok.indexer.condition.ConditionalRunRule;
 import org.opengrok.indexer.condition.RepositoryInstalled;
+import org.opengrok.indexer.condition.UnixPresent;
 import org.opengrok.indexer.configuration.Project;
 import org.opengrok.indexer.configuration.RuntimeEnvironment;
 import org.opengrok.indexer.history.Annotation;
 import org.opengrok.indexer.history.HistoryGuru;
 import org.opengrok.indexer.util.TestRepository;
-
-import static org.junit.Assert.*;
 
 /**
  * Unit tests for the {@code PageConfig} class.
@@ -102,8 +109,8 @@ public class PageConfigTest {
         }
     }
 
-    @ConditionalRun(RepositoryInstalled.MercurialInstalled.class)
     @Test
+    @ConditionalRun(RepositoryInstalled.MercurialInstalled.class)
     public void canProcessHistory() {
         // Expect no redirection (that is, empty string is returned) for a
         // file that exists.
@@ -243,11 +250,12 @@ public class PageConfigTest {
     }
 
     @Test
+    @ConditionalRun(RepositoryInstalled.GitInstalled.class)
     public void testGetLatestRevisionValid() {
         DummyHttpServletRequest req1 = new DummyHttpServletRequest() {
             @Override
-                public String getPathInfo() {
-                    return "/git/main.c";
+            public String getPathInfo() {
+                return "/git/main.c";
             }
         };
 
@@ -258,6 +266,61 @@ public class PageConfigTest {
     }
 
     @Test
+    @ConditionalRun(RepositoryInstalled.GitInstalled.class)
+    public void testGetRevisionLocation() {
+        DummyHttpServletRequest req1 = new DummyHttpServletRequest() {
+            @Override
+            public String getPathInfo() {
+                return "/git/main.c";
+            }
+
+            @Override
+            public String getContextPath() {
+                return "source";
+            }
+
+            @Override
+            public String getQueryString() {
+                return "a=true";
+            }
+        };
+
+        PageConfig cfg = PageConfig.get(req1);
+
+        String location = cfg.getRevisionLocation(cfg.getLatestRevision());
+        assertNotNull(location);
+        assertEquals("source/xref/git/main.c?r=aa35c258&a=true", location);
+    }
+
+    @Test
+    @ConditionalRun(RepositoryInstalled.GitInstalled.class)
+    public void testGetRevisionLocationNullQuery() {
+        DummyHttpServletRequest req1 = new DummyHttpServletRequest() {
+            @Override
+            public String getPathInfo() {
+                return "/git/main.c";
+            }
+
+            @Override
+            public String getContextPath() {
+                return "source";
+            }
+
+            @Override
+            public String getQueryString() {
+                return null;
+            }
+        };
+
+        PageConfig cfg = PageConfig.get(req1);
+
+        String location = cfg.getRevisionLocation(cfg.getLatestRevision());
+        assertNotNull(location);
+        assertEquals("source/xref/git/main.c?r=aa35c258", location);
+    }
+
+    @Test
+    @ConditionalRun(RepositoryInstalled.GitInstalled.class)
     public void testGetLatestRevisionNotValid() {
         DummyHttpServletRequest req2 = new DummyHttpServletRequest() {
             @Override
@@ -367,11 +430,11 @@ public class PageConfigTest {
         PageConfig cfg = PageConfig.get(req);
         String path = RuntimeEnvironment.getInstance().getSourceRootPath();
         System.out.println(path);
-        RuntimeEnvironment.getInstance().getConfiguration().setSourceRoot(null);
+        RuntimeEnvironment.getInstance().setSourceRoot(null);
         try {
             cfg.checkSourceRootExistence();
         } finally {
-            RuntimeEnvironment.getInstance().getConfiguration().setSourceRoot(path);
+            RuntimeEnvironment.getInstance().setSourceRoot(path);
             PageConfig.cleanup(req);
         }
     }
@@ -386,11 +449,11 @@ public class PageConfigTest {
         HttpServletRequest req = new DummyHttpServletRequest();
         PageConfig cfg = PageConfig.get(req);
         String path = RuntimeEnvironment.getInstance().getSourceRootPath();
-        RuntimeEnvironment.getInstance().getConfiguration().setSourceRoot("");
+        RuntimeEnvironment.getInstance().setSourceRoot("");
         try {
             cfg.checkSourceRootExistence();
         } finally {
-            RuntimeEnvironment.getInstance().getConfiguration().setSourceRoot(path);
+            RuntimeEnvironment.getInstance().setSourceRoot(path);
             PageConfig.cleanup(req);
         }
     }
@@ -407,13 +470,13 @@ public class PageConfigTest {
         String path = RuntimeEnvironment.getInstance().getSourceRootPath();
         File temp = File.createTempFile("opengrok", "-test-file.tmp");
         Files.delete(temp.toPath());
-        RuntimeEnvironment.getInstance().getConfiguration().setSourceRoot(temp.getAbsolutePath());
+        RuntimeEnvironment.getInstance().setSourceRoot(temp.getAbsolutePath());
         try {
             cfg.checkSourceRootExistence();
             fail("This should throw an exception when the file does not exist");
         } catch (IOException ex) {
         }
-        RuntimeEnvironment.getInstance().getConfiguration().setSourceRoot(path);
+        RuntimeEnvironment.getInstance().setSourceRoot(path);
         PageConfig.cleanup(req);
     }
 
@@ -423,6 +486,7 @@ public class PageConfigTest {
      * @throws IOException I/O exception
      */
     @Test
+    @ConditionalRun(UnixPresent.class)
     public void testCheckSourceRootExistence4() throws IOException {
         HttpServletRequest req = new DummyHttpServletRequest();
         PageConfig cfg = PageConfig.get(req);
@@ -430,14 +494,15 @@ public class PageConfigTest {
         File temp = File.createTempFile("opengrok", "-test-file.tmp");
         Files.delete(temp.toPath());
         Files.createDirectories(temp.toPath());
-        temp.setReadable(false);
-        RuntimeEnvironment.getInstance().getConfiguration().setSourceRoot(temp.getAbsolutePath());
+        // skip the test if the implementation does not permit setting permissions
+        Assume.assumeTrue(temp.setReadable(false));
+        RuntimeEnvironment.getInstance().setSourceRoot(temp.getAbsolutePath());
         try {
             cfg.checkSourceRootExistence();
             fail("This should throw an exception when the file is not readable");
         } catch (IOException ex) {
         }
-        RuntimeEnvironment.getInstance().getConfiguration().setSourceRoot(path);
+        RuntimeEnvironment.getInstance().setSourceRoot(path);
 
         PageConfig.cleanup(req);
         temp.deleteOnExit();
@@ -456,9 +521,9 @@ public class PageConfigTest {
         File temp = File.createTempFile("opengrok", "-test-file.tmp");
         temp.delete();
         temp.mkdirs();
-        RuntimeEnvironment.getInstance().getConfiguration().setSourceRoot(temp.getAbsolutePath());
+        RuntimeEnvironment.getInstance().setSourceRoot(temp.getAbsolutePath());
         cfg.checkSourceRootExistence();
-        RuntimeEnvironment.getInstance().getConfiguration().setSourceRoot(path);
+        RuntimeEnvironment.getInstance().setSourceRoot(path);
         temp.deleteOnExit();
         PageConfig.cleanup(req);
     }

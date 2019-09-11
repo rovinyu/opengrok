@@ -18,7 +18,7 @@
  */
 
 /*
- * Copyright (c) 2008, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2008, 2019, Oracle and/or its affiliates. All rights reserved.
  */
 
 package org.opengrok.indexer.util;
@@ -34,6 +34,7 @@ import java.io.Reader;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.logging.Level;
@@ -42,7 +43,7 @@ import org.opengrok.indexer.configuration.RuntimeEnvironment;
 import org.opengrok.indexer.logger.LoggerFactory;
 
 /**
- * Wrapper to Java Process API
+ * Wrapper to Java Process API.
  *
  * @author Emilio Monti - emilmont@gmail.com
  */
@@ -100,7 +101,7 @@ public class Executor {
     }
 
     /**
-     * Create a new instance of the Executor with or without timeout,
+     * Create a new instance of the Executor with or without timeout.
      * @param cmdList A list containing the command to execute
      * @param workingDirectory The directory the process should have as the
      *                         working directory
@@ -124,7 +125,7 @@ public class Executor {
     }
 
     /**
-     * Execute the command and collect the output
+     * Execute the command and collect the output.
      *
      * @param reportExceptions Should exceptions be added to the log or not
      * @return The exit code of the process
@@ -137,7 +138,7 @@ public class Executor {
     }
 
     /**
-     * Execute the command and collect the output
+     * Execute the command and collect the output.
      *
      * @param reportExceptions Should exceptions be added to the log or not
      * @param handler The handler to handle data from standard output
@@ -165,9 +166,14 @@ public class Executor {
             dir_str = cwd.toString();
         }
 
+        String env_str = "";
+        if (LOGGER.isLoggable(Level.FINER)) {
+            Map<String, String> env_map = processBuilder.environment();
+            env_str = " with environment: " + env_map.toString();
+        }
         LOGGER.log(Level.FINE,
-                "Executing command {0} in directory {1}",
-                new Object[] {cmd_str,dir_str});
+                "Executing command {0} in directory {1}{2}",
+                new Object[] {cmd_str, dir_str, env_str});
 
         Process process = null;
         try {
@@ -186,9 +192,8 @@ public class Executor {
                         if (reportExceptions) {
                             LOGGER.log(Level.SEVERE,
                                     "Error while executing command {0} in directory {1}",
-                                    new Object[] {cmd_str,dir_str});
-                            LOGGER.log(Level.SEVERE,
-                                    "Error during process pipe listening", ex);
+                                    new Object[] {cmd_str, dir_str});
+                            LOGGER.log(Level.SEVERE, "Error during process pipe listening", ex);
                         }
                     }
                 }
@@ -218,8 +223,8 @@ public class Executor {
             ret = process.waitFor();
             
             LOGGER.log(Level.FINE,
-                "Finished command {0} in directory {1}",
-                new Object[] {cmd_str,dir_str});
+                "Finished command {0} in directory {1} with exit code {2}",
+                new Object[] {cmd_str, dir_str, ret});
 
             // Wait for the stderr read-out thread to finish the processing and
             // only after that read the data.
@@ -248,9 +253,7 @@ public class Executor {
                     ret = process.exitValue();
                 }
             } catch (IllegalThreadStateException e) {
-                if (process != null) {
-                    process.destroy();
-                }
+                process.destroy();
             }
         }
 
@@ -290,7 +293,7 @@ public class Executor {
     }
 
     /**
-     * Get a reader to read the output from the process
+     * Get a reader to read the output from the process.
      *
      * @return A reader reading the process output
      */
@@ -299,7 +302,7 @@ public class Executor {
     }
 
     /**
-     * Get an input stream read the output from the process
+     * Get an input stream read the output from the process.
      *
      * @return A reader reading the process output
      */
@@ -341,9 +344,9 @@ public class Executor {
 
     /**
      * You should use the StreamHandler interface if you would like to process
-     * the output from a process while it is running
+     * the output from a process while it is running.
      */
-    public static interface StreamHandler {
+    public interface StreamHandler {
 
         /**
          * Process the data in the stream. The processStream function is
@@ -353,7 +356,7 @@ public class Executor {
          * @param in The InputStream containing the data
          * @throws java.io.IOException if any read error
          */
-        public void processStream(InputStream in) throws IOException;
+        void processStream(InputStream in) throws IOException;
     }
 
     private static class SpoolHandler implements StreamHandler {
@@ -381,7 +384,7 @@ public class Executor {
     
     public static void registerErrorHandler() {
         UncaughtExceptionHandler dueh =
-            Thread.currentThread().getDefaultUncaughtExceptionHandler();
+            Thread.getDefaultUncaughtExceptionHandler();
         if (dueh == null) {
             LOGGER.log(Level.FINE, "Installing default uncaught exception handler");
             Thread.setDefaultUncaughtExceptionHandler(new UncaughtExceptionHandler() {

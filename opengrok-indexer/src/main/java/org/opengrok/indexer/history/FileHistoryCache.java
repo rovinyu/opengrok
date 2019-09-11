@@ -18,7 +18,7 @@
  */
 
 /*
- * Copyright (c) 2008, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2008, 2019, Oracle and/or its affiliates. All rights reserved.
  * Portions Copyright (c) 2018, Chris Fraire <cfraire@me.com>.
  */
 
@@ -40,6 +40,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -58,8 +59,9 @@ import org.opengrok.indexer.configuration.RuntimeEnvironment;
 import org.opengrok.indexer.logger.LoggerFactory;
 import org.opengrok.indexer.util.ForbiddenSymlinkException;
 import org.opengrok.indexer.util.IOUtils;
+import org.opengrok.indexer.util.TandemPath;
 
-/*
+/**
  * Class representing file based storage of per source file history.
  */
 class FileHistoryCache implements HistoryCache {
@@ -68,9 +70,9 @@ class FileHistoryCache implements HistoryCache {
 
     private final Object lock = new Object();
 
-    private final static String HISTORY_CACHE_DIR_NAME = "historycache";
-    private final static String LATEST_REV_FILE_NAME = "OpenGroklatestRev";
-    private final static String DIRECTORY_FILE_PREFIX = "OpenGrokDirHist";
+    private static final String HISTORY_CACHE_DIR_NAME = "historycache";
+    private static final String LATEST_REV_FILE_NAME = "OpenGroklatestRev";
+    private static final String DIRECTORY_FILE_PREFIX = "OpenGrokDirHist";
 
     private boolean historyIndexDone = false;
 
@@ -165,7 +167,7 @@ class FileHistoryCache implements HistoryCache {
     static class FilePersistenceDelegate extends PersistenceDelegate {
         @Override
         protected Expression instantiate(Object oldInstance, Encoder out) {
-            File f = (File)oldInstance;
+            File f = (File) oldInstance;
             return new Expression(oldInstance, f.getClass(), "new",
                 new Object[] {f.toString()});
         }
@@ -212,13 +214,12 @@ class FileHistoryCache implements HistoryCache {
                 sb.append(File.separator);
                 sb.append(DIRECTORY_FILE_PREFIX);
             }
-            sb.append(".gz");
         } catch (IOException e) {
             throw new HistoryException("Failed to get path relative to " +
                     "source root for " + file, e);
         }
 
-        return new File(sb.toString());
+        return new File(TandemPath.join(sb.toString(), ".gz"));
     }
 
     /**
@@ -302,9 +303,9 @@ class FileHistoryCache implements HistoryCache {
             if (!listOld.isEmpty()) {
                 RuntimeEnvironment env = RuntimeEnvironment.getInstance();
                 List<HistoryEntry> listNew = histNew.getHistoryEntries();
-                ListIterator li = listNew.listIterator(listNew.size());
+                ListIterator<HistoryEntry> li = listNew.listIterator(listNew.size());
                 while (li.hasPrevious()) {
-                    listOld.add(0, (HistoryEntry) li.previous());
+                    listOld.add(0, li.previous());
                 }
                 history = new History(listOld);
 
@@ -332,7 +333,7 @@ class FileHistoryCache implements HistoryCache {
     /**
      * Store history object (encoded as XML and compressed with gzip) in a file.
      *
-     * @param history history object to store
+     * @param histNew history object to store
      * @param file file to store the history object into
      * @param repo repository for the file
      * @param mergeHistory whether to merge the history with existing or
@@ -481,8 +482,7 @@ class FileHistoryCache implements HistoryCache {
                         continue;
                 }
             } catch (IOException ex) {
-               LOGGER.log(Level.WARNING,
-                   "isRenamedFile() got exception " , ex);
+               LOGGER.log(Level.WARNING, "isRenamedFile() got exception", ex);
             }
 
             doFileHistory(map_entry.getKey(), map_entry.getValue(),
@@ -535,9 +535,7 @@ class FileHistoryCache implements HistoryCache {
         final CountDownLatch latch = new CountDownLatch(renamed_map.size());
         AtomicInteger renamedFileHistoryCount = new AtomicInteger();
         for (final Map.Entry<String, List<HistoryEntry>> map_entry : renamed_map.entrySet()) {
-            RuntimeEnvironment.getHistoryRenamedExecutor().submit(new Runnable() {
-                @Override
-                public void run() {
+            env.getIndexerParallelizer().getHistoryRenamedExecutor().submit(() -> {
                     try {
                         doFileHistory(map_entry.getKey(), map_entry.getValue(),
                             env, repositoryF,
@@ -551,7 +549,6 @@ class FileHistoryCache implements HistoryCache {
                     } finally {
                         latch.countDown();
                     }
-                }
             });
         }
 
@@ -560,7 +557,7 @@ class FileHistoryCache implements HistoryCache {
             // Wait for the executors to finish.
             latch.await();
         } catch (InterruptedException ex) {
-            LOGGER.log(Level.SEVERE, "latch exception ",ex);
+            LOGGER.log(Level.SEVERE, "latch exception", ex);
         }
         LOGGER.log(Level.FINE, "Stored history for {0} renamed files",
                 renamedFileHistoryCount.intValue());
@@ -660,7 +657,7 @@ class FileHistoryCache implements HistoryCache {
             return false;
         } catch (IOException e) {
             throw new HistoryException("Could not resolve " +
-                    repos.getDirectoryName()+" relative to source root", e);
+                    repos.getDirectoryName() + " relative to source root", e);
         }
         return dir.exists();
     }
@@ -684,7 +681,7 @@ class FileHistoryCache implements HistoryCache {
                     new File(repository.getDirectoryName()));
         } catch (IOException ex) {
             LOGGER.log(Level.WARNING, "Could not resolve " +
-                repository.getDirectoryName()+" relative to source root", ex);
+                repository.getDirectoryName() + " relative to source root", ex);
             return null;
         } catch (ForbiddenSymlinkException ex) {
             LOGGER.log(Level.FINER, ex.getMessage());
@@ -717,7 +714,7 @@ class FileHistoryCache implements HistoryCache {
                   new FileOutputStream(getRepositoryCachedRevPath(repository))));
             writer.write(rev);
         } catch (IOException ex) {
-            LOGGER.log(Level.WARNING, "Cannot write latest cached revision to file for "+repository.getDirectoryName(),
+            LOGGER.log(Level.WARNING, "Cannot write latest cached revision to file for " + repository.getDirectoryName(),
                 ex);
         } finally {
            try {
@@ -789,6 +786,8 @@ class FileHistoryCache implements HistoryCache {
             // Remove all files which constitute the history cache.
             try {
                 IOUtils.removeRecursive(Paths.get(histDir));
+            } catch (NoSuchFileException ex) {
+                LOGGER.log(Level.WARNING, String.format("directory %s does not exist", histDir));
             } catch (IOException ex) {
                 LOGGER.log(Level.SEVERE, "tried removeRecursive()", ex);
             }

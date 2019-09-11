@@ -43,7 +43,7 @@ final class CustomExactPhraseScorer extends Scorer implements PhraseScorer { // 
         private final int offset;
         private int freq, upTo, pos;
 
-        public PostingsAndPosition(PostingsEnum postings, int offset) {
+        PostingsAndPosition(PostingsEnum postings, int offset) {
             this.postings = postings;
             this.offset = offset;
         }
@@ -65,7 +65,7 @@ final class CustomExactPhraseScorer extends Scorer implements PhraseScorer { // 
      * @param postings postings of the terms
      * @param offset the offset that is added to the found match position
      */
-    public CustomExactPhraseScorer(
+    CustomExactPhraseScorer(
             final Weight weight,
             final CustomPhraseQuery.PostingsAndFreq[] postings,
             final int offset
@@ -108,6 +108,11 @@ final class CustomExactPhraseScorer extends Scorer implements PhraseScorer { // 
                 return 0; // custom – default value
             }
         };
+    }
+
+    @Override
+    public float getMaxScore(int i) throws IOException {
+        return 0;
     }
 
     @Override
@@ -167,7 +172,7 @@ final class CustomExactPhraseScorer extends Scorer implements PhraseScorer { // 
                 final int expectedPos = phrasePos + posting.offset;
 
                 // advance up to the same position as the lead
-                if (advancePosition(posting, expectedPos) == false) {
+                if (!advancePosition(posting, expectedPos)) {
                     break advanceHead;
                 }
 

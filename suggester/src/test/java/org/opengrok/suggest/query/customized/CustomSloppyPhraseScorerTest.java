@@ -18,7 +18,7 @@
  */
 
 /*
- * Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2018, 2019 Oracle and/or its affiliates. All rights reserved.
  */
 package org.opengrok.suggest.query.customized;
 
@@ -32,10 +32,12 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.TwoPhaseIterator;
 import org.apache.lucene.search.Weight;
-import org.apache.lucene.store.RAMDirectory;
+import org.apache.lucene.store.ByteBuffersDirectory;
+import org.apache.lucene.store.Directory;
 import org.junit.Test;
 import org.opengrok.suggest.query.PhraseScorer;
 import org.opengrok.suggest.query.data.BitIntsHolder;
@@ -49,13 +51,14 @@ import static org.junit.Assert.assertThat;
 
 public class CustomSloppyPhraseScorerTest {
 
+    @SuppressWarnings("unchecked") // for contains()
     public static void test(
             final int slop,
             final int offset,
             final String[] terms,
             final Integer[] expectedPositions
     ) throws IOException {
-        RAMDirectory dir = new RAMDirectory();
+        Directory dir = new ByteBuffersDirectory();
 
         try (IndexWriter iw = new IndexWriter(dir, new IndexWriterConfig())) {
             Document doc = new Document();
@@ -70,7 +73,7 @@ public class CustomSloppyPhraseScorerTest {
         try (IndexReader ir = DirectoryReader.open(dir)) {
             IndexSearcher is = new IndexSearcher(ir);
 
-            Weight w = query.createWeight(is, false, 1);
+            Weight w = query.createWeight(is, ScoreMode.COMPLETE_NO_SCORES, 1);
 
             LeafReaderContext context = ir.getContext().leaves().get(0);
 

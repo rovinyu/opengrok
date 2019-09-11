@@ -18,7 +18,7 @@
  */
 
 /*
- * Copyright (c) 2011, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2011, 2019, Oracle and/or its affiliates. All rights reserved.
  * Portions copyright (c) 2011 Jens Elkner. 
  * Portions Copyright (c) 2017-2018, Chris Fraire <cfraire@me.com>.
  */
@@ -86,11 +86,11 @@ public class SearchHelper {
 
     public static final String REQUEST_ATTR = "SearchHelper";
     /**
-     * max number of words to suggest for spellcheck
+     * Max number of words to suggest for spellcheck.
      */
     public int SPELLCHECK_SUGGEST_WORD_COUNT = 5;
     /**
-     * opengrok's data root: used to find the search index file
+     * Opengrok's data root: used to find the search index file.
      */
     public File dataRoot;
     /**
@@ -120,11 +120,11 @@ public class SearchHelper {
      */
     public int maxItems;
     /**
-     * the QueryBuilder used to create the query
+     * The QueryBuilder used to create the query.
      */
     public QueryBuilder builder;
     /**
-     * the order used for ordering query results
+     * The order used for ordering query results.
      */
     public SortOrder order;
     /**
@@ -166,15 +166,15 @@ public class SearchHelper {
      */
     private final ArrayList<SuperIndexSearcher> searcherList = new ArrayList<>();
     /**
-     * close IndexReader associated with searches on destroy()
+     * Close IndexReader associated with searches on destroy().
      */
     private Boolean closeOnDestroy;
     /**
-     * list of docs which result from the executing the query
+     * List of docs which result from the executing the query.
      */
     public ScoreDoc[] hits;
     /**
-     * total number of hits
+     * Total number of hits.
      */
     public long totalHits;
     /**
@@ -188,7 +188,7 @@ public class SearchHelper {
      */
     protected Sort sort;
     /**
-     * the spellchecker object
+     * The spellchecker object.
      */
     protected DirectSpellChecker checker;
     /**
@@ -210,12 +210,12 @@ public class SearchHelper {
     public HistoryContext historyContext;
     
     /**
-     * Default query parse error message prefix
+     * Default query parse error message prefix.
      */
     public static final String PARSE_ERROR_MSG = "Unable to parse your query: ";
 
     /**
-     * Key is Project name or empty string for null Project
+     * Key is Project name or empty string for null Project.
      */
     private Map<String, IndexAnalysisSettings> mappedAnalysisSettings;
 
@@ -378,7 +378,7 @@ public class SearchHelper {
         }
         try {
             TopFieldDocs fdocs = searcher.search(query, start + maxItems, sort);
-            totalHits = fdocs.totalHits;
+            totalHits = fdocs.totalHits.value;
             hits = fdocs.scoreDocs;
             // Bug #3900: Check if this is a search for a single term, and that
             // term is a definition. If that's the case, and we only have one match,
@@ -448,7 +448,7 @@ public class SearchHelper {
         if (projects == null) {
             return new ArrayList<>(0);
         }
-        String name[];
+        String[] name;
         if (projects.isEmpty()) {
             name = new String[]{"/"};
         } else if (projects.size() == 1) {
@@ -503,7 +503,7 @@ public class SearchHelper {
                 }
             } catch (IOException e) {
                 LOGGER.log(Level.WARNING, "Got exception while getting "
-                        + "spelling suggestions: ", e);
+                        + "spelling suggestions for project " + proj + ":", e);
             } finally {
                 if (ir != null && closeOnDestroy) {
                     try {
@@ -596,7 +596,7 @@ public class SearchHelper {
         query = singleBuilder.setPath(path).build();
 
         TopDocs top = searcher.search(query, 1);
-        if (top.totalHits == 0) {
+        if (top.totalHits.value == 0) {
             return -1;
         }
 

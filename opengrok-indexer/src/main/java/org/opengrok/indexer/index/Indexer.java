@@ -18,16 +18,19 @@
  */
 
 /*
- * Copyright (c) 2005, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2019, Oracle and/or its affiliates. All rights reserved.
  * Portions Copyright 2011 Jens Elkner.
- * Portions Copyright (c) 2017-2018, Chris Fraire <cfraire@me.com>.
+ * Portions Copyright (c) 2017-2019, Chris Fraire <cfraire@me.com>.
  */
 package org.opengrok.indexer.index;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Paths;
 import java.text.ParseException;
 import java.util.ArrayList;
@@ -41,6 +44,7 @@ import java.util.Map.Entry;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -53,7 +57,6 @@ import org.opengrok.indexer.configuration.ConfigurationHelp;
 import org.opengrok.indexer.configuration.LuceneLockName;
 import org.opengrok.indexer.configuration.Project;
 import org.opengrok.indexer.configuration.RuntimeEnvironment;
-import org.opengrok.indexer.history.HistoryException;
 import org.opengrok.indexer.history.HistoryGuru;
 import org.opengrok.indexer.history.Repository;
 import org.opengrok.indexer.history.RepositoryFactory;
@@ -67,7 +70,13 @@ import org.opengrok.indexer.util.Statistics;
 
 /**
  * Creates and updates an inverted source index as well as generates Xref, file
- * stats etc., if specified in the options
+ * stats etc., if specified in the options.
+ *
+ * We shall use / as path delimiter in whole opengrok for uuids and paths
+ * from Windows systems, the path shall be converted when entering the index or web
+ * and converted back if needed* to access original file
+ *
+ * *Windows already supports opening /var/opengrok as C:\var\opengrok
  */
 @SuppressWarnings({"PMD.AvoidPrintStackTrace", "PMD.SystemPrintln"})
 public final class Indexer {
@@ -80,15 +89,22 @@ public final class Indexer {
     private static final String DIRBASED = "dirbased";
     private static final String UIONLY = "uionly";
 
+    //whole app uses this separator
+    public static final char PATH_SEPARATOR = '/';
+    public static String PATH_SEPARATOR_STRING = Character.toString(PATH_SEPARATOR);
+
+    private static final String HELP_OPT_1 = "--help";
+    private static final String HELP_OPT_2 = "-?";
+    private static final String HELP_OPT_3 = "-h";
+
     private static final Indexer index = new Indexer();
     private static Configuration cfg = null;
-    private static Configuration checkIndexVersionCfg;
-    private static boolean listRepos = false;
+    private static boolean checkIndexVersion = false;
     private static boolean runIndex = true;
     private static boolean optimizedChanged = false;
     private static boolean addProjects = false;
     private static boolean searchRepositories = false;
-    private static boolean noindex = false;
+    private static boolean bareConfig = false;
     private static boolean awaitProfiler;
 
     private static boolean help;
@@ -101,9 +117,8 @@ public final class Indexer {
     private static final Set<String> repositories = new HashSet<>();
     private static final HashSet<String> allowedSymlinks = new HashSet<>();
     private static final Set<String> defaultProjects = new TreeSet<>();
-    private static final ArrayList<String> zapCache = new ArrayList<>();
     private static RuntimeEnvironment env = null;
-    private static String host = null;
+    private static String webappURI = null;
 
     private static OptionParser optParser = null;
     private static boolean verbose = false;
@@ -113,12 +128,12 @@ public final class Indexer {
     }
 
     /**
-     * Program entry point
+     * Program entry point.
      *
      * @param argv argument vector
      */
     @SuppressWarnings("PMD.UseStringBufferForStringAppends")
-    public static void main(String argv[]) {
+    public static void main(String[] argv) {
         Statistics stats = new Statistics(); //this won't count JVM creation though
         boolean update = true;
 
@@ -126,18 +141,16 @@ public final class Indexer {
         ArrayList<String> subFiles = new ArrayList<>();
         ArrayList<String> subFilesList = new ArrayList<>();
 
-        boolean listFiles = false;
         boolean createDict = false;
 
         try {
             argv = parseOptions(argv);
             if (help) {
-                status = 1;
-                System.err.println(helpUsage);
+                PrintStream helpStream = status != 0 ? System.err : System.out;
+                helpStream.println(helpUsage);
                 if (helpDetailed) {
-                    System.err.println(AnalyzerGuruHelp.getUsage());
-                    System.err.println(
-                        ConfigurationHelp.getSamples());
+                    helpStream.println(AnalyzerGuruHelp.getUsage());
+                    helpStream.println(ConfigurationHelp.getSamples());
                 }
                 System.exit(status);
             }
@@ -200,22 +213,6 @@ public final class Indexer {
                 subFilesList.add(path);
             }
 
-            // Check version of index(es) versus current Lucene version and exit
-            // with return code upon failure.
-            if (checkIndexVersionCfg != null) {
-                try {
-                    IndexVersion.check(checkIndexVersionCfg, subFilesList);
-                } catch (IndexVersionException e) {
-                    System.err.printf("Index version check failed: %s\n", e);
-                    System.err.printf("You might want to remove " +
-                            (subFilesList.size() > 0 ?
-                            "data for projects " + String.join(",", subFilesList) : "all data") +
-                            " under the DATA_ROOT and to reindex\n");
-                    status = 1;
-                    System.exit(status);
-                }
-            }
-
             // If an user used customizations for projects he perhaps just
             // used the key value for project without a name but the code
             // expects a name for the project. Therefore we fill the name
@@ -229,13 +226,34 @@ public final class Indexer {
             // Set updated configuration in RuntimeEnvironment.
             env.setConfiguration(cfg, subFilesList, false);
 
+            // Check version of index(es) versus current Lucene version and exit
+            // with return code upon failure.
+            if (checkIndexVersion) {
+                if (cfg == null) {
+                    System.err.println("Need configuration to check index version (use -R)");
+                    System.exit(1);
+                }
+
+                try {
+                    IndexVersion.check(subFilesList);
+                } catch (IndexVersionException e) {
+                    System.err.printf("Index version check failed: %s\n", e);
+                    System.err.printf("You might want to remove " +
+                            (subFilesList.size() > 0 ?
+                                    "data for projects " + String.join(",", subFilesList) : "all data") +
+                            " under the DATA_ROOT and to reindex\n");
+                    status = 1;
+                    System.exit(status);
+                }
+            }
+
             // Let repository types to add items to ignoredNames.
             // This changes env so is called after the setConfiguration()
             // call above.
             RepositoryFactory.initializeIgnoredNames(env);
 
-            if (noindex) {
-                getInstance().sendToConfigHost(env, host);
+            if (bareConfig) {
+                getInstance().sendToConfigHost(env, webappURI);
                 writeConfigToFile(env, configFilename);
                 System.exit(0);
             }
@@ -261,8 +279,11 @@ public final class Indexer {
                     Project project;
                     if ((project = Project.getProject(path)) != null) {
                         subFiles.add(path);
-                        repositories.addAll(env.getProjectRepositoriesMap().get(project).
-                                stream().map(x -> x.getDirectoryNameRelative()).collect(Collectors.toSet()));
+                        List<RepositoryInfo> repoList = env.getProjectRepositoriesMap().get(project);
+                        if (repoList != null) {
+                            repositories.addAll(repoList.
+                                    stream().map(RepositoryInfo::getDirectoryNameRelative).collect(Collectors.toSet()));
+                        }
                     } else {
                         System.err.println("The path " + path
                                 + " does not correspond to a project");
@@ -282,26 +303,24 @@ public final class Indexer {
             // from project-less config to one with projects), set the property
             // so that the 'project/indexed' messages
             // emitted during indexing do not cause validation error.
-            if (addProjects && host != null) {
+            if (addProjects && webappURI != null) {
                 try {
-                    IndexerUtil.enableProjects(host);
+                    IndexerUtil.enableProjects(webappURI);
                 } catch (Exception e) {
-                    LOGGER.log(Level.SEVERE, "Mis-configuration of webapp host", e);
-                    System.err.println("Couldn't notify the webapp: " + e.getLocalizedMessage());
+                    LOGGER.log(Level.SEVERE, String.format("Couldn't notify the webapp on %s.", webappURI), e);
+                    System.err.println(String.format("Couldn't notify the webapp on %s: %s.", webappURI, e.getLocalizedMessage()));
                 }
             }
 
             LOGGER.log(Level.INFO, "Indexer version {0} ({1})",
                     new Object[]{Info.getVersion(), Info.getRevision()});
-            
-            // Get history first.
+
+            // Create history cache first.
             getInstance().prepareIndexer(env, searchRepositories, addProjects,
-                    defaultProjects,
-                    listFiles, createDict, subFiles, new ArrayList(repositories),
-                    zapCache, listRepos);
-            if (listRepos || !zapCache.isEmpty()) {
-                return;
-            }
+                    createDict, runIndex, subFiles, new ArrayList<>(repositories));
+
+            // prepareIndexer() populated the list of projects so now default projects can be set.
+            env.setDefaultProjectsFromNames(defaultProjects);
 
             // And now index it all.
             if (runIndex || (optimizedChanged && env.isOptimizeDatabase())) {
@@ -313,19 +332,21 @@ public final class Indexer {
 
             // Finally ping webapp to refresh indexes in the case of partial reindex
             // or send new configuration to the web application in the case of full reindex.
-            if (host != null) {
+            if (webappURI != null) {
                 if (!subFiles.isEmpty()) {
-                    getInstance().refreshSearcherManagers(env, subFiles, host);
+                    getInstance().refreshSearcherManagers(env, subFiles, webappURI);
                 } else {
-                    getInstance().sendToConfigHost(env, host);
+                    getInstance().sendToConfigHost(env, webappURI);
                 }
             }
 
+            env.getIndexerParallelizer().bounce();
         } catch (ParseException e) {
-            System.err.println("** " +e.getMessage());
+            System.err.println("** " + e.getMessage());
             System.exit(1);
         } catch (IndexerException ex) {
             LOGGER.log(Level.SEVERE, "Exception running indexer", ex);
+            System.err.println("Exception: " + ex.getLocalizedMessage());
             System.err.println(optParser.getUsage());
             System.exit(1);
         } catch (Throwable e) {
@@ -338,7 +359,7 @@ public final class Indexer {
     }
 
     /**
-     * Web address consisting of host and port of a web address
+     * Web address consisting of webappURI and port of a web address.
      */
     public static class WebAddress {
         private String host;
@@ -357,10 +378,10 @@ public final class Indexer {
     }
 
      /**
-      * Parse a web address into its host and port components
+      * Parse a web address into its webappURI and port components
       * This method along with the WebAddress class is used by OptionParser
       * to validate user entry of a web address.
-      * @param webAddr expected to be in the form host:port
+      * @param webAddr expected to be in the form webappURI:port
       * @return WebAddress object
       * @throws NumberFormatException or IllegalArgumentException
       */
@@ -368,7 +389,7 @@ public final class Indexer {
         String[] hp = webAddr.split(":");
 
         if (hp.length != 2) {
-            throw new IllegalArgumentException("WebAddress syntax error (expecting host:port)");
+            throw new IllegalArgumentException("WebAddress syntax error (expecting webappURI:port)");
         }
 
         return new WebAddress(hp[0], hp[1]);
@@ -385,7 +406,7 @@ public final class Indexer {
      * @throws ParseException if parsing failed
      */
     public static String[] parseOptions(String[] argv) throws ParseException {
-        String[] usage = {"--help"};
+        String[] usage = {HELP_OPT_1};
         String program = "opengrok.jar";
         final String[] ON_OFF = {ON, OFF};
         final String[] REMOTE_REPO_CHOICES = {ON, OFF, DIRBASED, UIONLY};
@@ -393,35 +414,43 @@ public final class Indexer {
 
         if (argv.length == 0) {
             argv = usage;  // will force usage output
-            status = 1;
+            status = 1; // with non-zero EXIT STATUS
         }
+
+        /*
+         * Pre-match any of the --help options so that some possible exception-
+         * generating args handlers (e.g. -R) can be short-circuited.
+         */
+        help = Arrays.stream(argv).anyMatch(s -> HELP_OPT_1.equals(s) ||
+                HELP_OPT_2.equals(s) || HELP_OPT_3.equals(s));
 
         OptionParser configure = OptionParser.scan(parser -> {
             parser.on("-R configPath").Do(cfgFile -> {
                 try {
-                    cfg = Configuration.read(new File((String)cfgFile));
-                } catch(IOException e) {
+                    if (!help) {
+                        cfg = Configuration.read(new File((String) cfgFile));
+                    }
+                } catch (IOException e) {
                     die(e.getMessage());
                 }
             });
         });
 
         // An example of how to add a data type for option parsing
-        OptionParser.accept(WebAddress.class, s -> { return parseWebAddress(s); });
+        OptionParser.accept(WebAddress.class, Indexer::parseWebAddress);
 
         optParser = OptionParser.Do(parser -> {
             parser.setPrologue(
                 String.format("\nUsage: java -jar %s [options] [subDir1 [...]]\n", program));
 
-            parser.on("-?", "-h", "--help", "Display this usage summary.").Do(v -> {
+            parser.on(HELP_OPT_3, Indexer.HELP_OPT_2, HELP_OPT_1,
+                    "Display this usage summary.").Do(v -> {
                 help = true;
                 helpUsage = parser.getUsage();
             });
 
             parser.on("--detailed",
-                "Display additional help with -h,--help.").Do(v -> {
-                helpDetailed = true;
-            });
+                "Display additional help with -h,--help.").Do(v -> helpDetailed = true);
 
             parser.on(
                 "-A (.ext|prefix.):(-|analyzer)", "--analyzer", "/(\\.\\w+|\\w+\\.):(-|[a-zA-Z_0-9.]+)/",
@@ -437,35 +466,28 @@ public final class Indexer {
                     "  Ex: -A .c:-",
                     "      will disable specialized analyzers for all files ending with .c").
                 Do(analyzerSpec -> {
-                    String[] arg = ((String)analyzerSpec).split(":");
+                    String[] arg = ((String) analyzerSpec).split(":");
                     String fileSpec = arg[0];
                     String analyzer = arg[1];
                     configureFileAnalyzer(fileSpec, analyzer);
                 }
             );
 
-            parser.on("-c", "--ctags","=/path/to/ctags",
+            parser.on("-c", "--ctags", "=/path/to/ctags",
                 "Path to Universal Ctags",
                 "By default takes the Universal Ctags in PATH.").
-                Do(ctagsPath -> {
-                    cfg.setCtags((String)ctagsPath);
-                }
+                Do(ctagsPath -> cfg.setCtags((String) ctagsPath)
             );
 
-            parser.on("--checkIndexVersion", "=/path/to/conf",
+            parser.on("--checkIndexVersion",
                     "Check if current Lucene version matches index version").Do(v -> {
-                try {
-                    File cfgFile = new File((String)v);
-                    checkIndexVersionCfg = Configuration.read(cfgFile);
-                } catch(IOException|NullPointerException e) {
-                    die(e.getMessage());
-                }
+                checkIndexVersion = true;
             });
 
             parser.on("-d", "--dataRoot", "=/path/to/data/root",
                 "The directory where OpenGrok stores the generated data.").
                 Do(drPath -> {
-                    File dataRoot = new File((String)drPath);
+                    File dataRoot = new File((String) drPath);
                     if (!dataRoot.exists() && !dataRoot.mkdirs()) {
                         die("Cannot create data root: " + dataRoot);
                     }
@@ -474,22 +496,16 @@ public final class Indexer {
                     }
                     try {
                         cfg.setDataRoot(dataRoot.getCanonicalPath());
-                    } catch(IOException e) {
+                    } catch (IOException e) {
                         die(e.getMessage());
                     }
                 }
             );
 
-            parser.on("--deleteHistory", "=/path/to/repository",
-                "Delete the history cache for the given repository and exit.",
-                "Use '*' to delete the cache for all repositories.").Do(repo -> {
-                zapCache.add((String)repo);
-            });
-
             parser.on("--depth", "=number", Integer.class,
                 "Scanning depth for repositories in directory structure relative to",
                 "source root. Default is " + Configuration.defaultScanningDepth + ".").Do(depth -> {
-                cfg.setScanningDepth((Integer)depth);
+                cfg.setScanningDepth((Integer) depth);
             });
 
             parser.on("-e", "--economical",
@@ -511,14 +527,14 @@ public final class Indexer {
             parser.on("-I", "--include", "=pattern",
                 "Only files matching this pattern will be examined.",
                 "(supports wildcards, example: -I *.java -I *.c)").Do(pattern -> {
-                cfg.getIncludedNames().add((String)pattern);
+                cfg.getIncludedNames().add((String) pattern);
             });
 
             parser.on("-i", "--ignore", "=pattern",
                 "Ignore the named files (prefixed with 'f:')",
                 "or directories (prefixed with 'd:').",
                 "Supports wildcards (example: -i *.so -i *.dll)").Do(pattern -> {
-                cfg.getIgnoredNames().add((String)pattern);
+                cfg.getIgnoredNames().add((String) pattern);
             });
 
             parser.on("-l", "--lock", "=on|off|simple|native", LUCENE_LOCKS,
@@ -538,48 +554,39 @@ public final class Indexer {
 
             parser.on("--leadingWildCards", "=on|off", ON_OFF, Boolean.class,
                 "Allow or disallow leading wildcards in a search.").Do(v -> {
-                cfg.setAllowLeadingWildcard((Boolean)v);
-            });
-
-            parser.on("--listRepos", "List all repository paths and exit.").Do(v -> {
-                listRepos = true;
+                cfg.setAllowLeadingWildcard((Boolean) v);
             });
 
             parser.on("-m", "--memory", "=number", Double.class,
                 "Amount of memory that may be used for buffering added documents and",
-                "deletions before they are flushed to the directory (default "+Configuration.defaultRamBufferSize+"MB).",
+                "deletions before they are flushed to the directory (default " + Configuration.defaultRamBufferSize + "MB).",
                 "Please increase JVM heap accordingly, too.").Do(memSize -> {
-                cfg.setRamBufferSize((Double)memSize);
+                cfg.setRamBufferSize((Double) memSize);
             });
 
             parser.on("--man", "Generate OpenGrok XML manual page.").Do(v -> {
                 try {
                     System.out.print(parser.getManPage());
-                } catch(IOException e) {
+                } catch (IOException e) {
                     System.err.println(e.getMessage());
                     status = 1;
                 }
                 System.exit(status);
             });
 
-            parser.on("--mandoc","=/path/to/mandoc",
-                "Path to mandoc(1) binary.").
-                Do(mandocPath -> {
-                    cfg.setMandoc((String)mandocPath);
-                }
-            );
+            parser.on("--mandoc", "=/path/to/mandoc", "Path to mandoc(1) binary.")
+                    .Do(mandocPath -> cfg.setMandoc((String) mandocPath));
 
             parser.on("-n", "--noIndex",
-                "Do not generate indexes, but process all other command line options.").Do(v -> {
-                runIndex = false;
-            });
+                "Do not generate indexes and other data (such as history cache and xref files), " +
+                "but process all other command line options.").Do(v -> runIndex = false);
 
             parser.on("-O", "--optimize", "=on|off", ON_OFF, Boolean.class,
                 "Turn on/off the optimization of the index database",
                 "as part of the indexing step.").
                 Do(v -> {
                     boolean oldval = cfg.isOptimizeDatabase();
-                    cfg.setOptimizeDatabase((Boolean)v);
+                    cfg.setOptimizeDatabase((Boolean) v);
                     if (oldval != cfg.isOptimizeDatabase()) {
                         optimizedChanged = true;
                     }
@@ -589,7 +596,7 @@ public final class Indexer {
             parser.on("-o", "--ctagOpts", "=path",
                 "File with extra command line options for ctags.").
                 Do(path -> {
-                    String CTagsExtraOptionsFile = (String)path;
+                    String CTagsExtraOptionsFile = (String) path;
                     File CTagsFile = new File(CTagsExtraOptionsFile);
                     if (!(CTagsFile.isFile() && CTagsFile.canRead())) {
                         die("File '" + CTagsExtraOptionsFile + "' not found for the -o option");
@@ -612,7 +619,7 @@ public final class Indexer {
                 "set either in cookie or in parameter). May be used multiple",
                 "times for several projects. Use \"__all__\" for all projects.",
                 "You should strip off the source root.").Do(v -> {
-                defaultProjects.add((String)v);
+                defaultProjects.add((String) v);
             });
 
             parser.on("--profiler", "Pause to await profiler or debugger.").
@@ -622,9 +629,7 @@ public final class Indexer {
                 "Print per project percentage progress information.",
                 "(I/O extensive, since one read through directory structure is",
                 "made before indexing, needs -v, otherwise it just goes to the log)").
-                Do(v -> {
-                    cfg.setPrintProgress(true);
-                }
+                Do(v -> cfg.setPrintProgress(true)
             );
 
             parser.on("-Q", "--quickScan",  "=on|off", ON_OFF, Boolean.class,
@@ -632,7 +637,7 @@ public final class Indexer {
                 "1024k of a file is scanned, and a '[..all..]' link is inserted",
                 "when the file is bigger. Activating this may slow the server down.",
                 "(Note: this is setting only affects the web application)").Do(v -> {
-                cfg.setQuickContextScan((Boolean)v);
+                cfg.setQuickContextScan((Boolean) v);
             });
 
             parser.on("-q", "--quiet", "Run as quietly as possible.",
@@ -643,11 +648,11 @@ public final class Indexer {
             parser.on("--repository", "=repository",
                     "Generate history for specific repository specified as relative path to source root. ",
                     "Can be used multiple times. Assumes history is on.").Do(repo -> {
-                repositories.add((String)repo);
+                repositories.add((String) repo);
             });
 
             parser.on("-R /path/to/configuration",
-                "Read configuration from the specified file.").Do(v-> {
+                "Read configuration from the specified file.").Do(v -> {
                 // Already handled above. This populates usage.
             });
 
@@ -676,25 +681,21 @@ public final class Indexer {
             parser.on("--renamedHistory", "=on|off", ON_OFF, Boolean.class,
                 "Enable or disable generating history for renamed files.",
                 "If set to on, makes history indexing slower for repositories",
-                "with lots of renamed files.").Do(v -> {
-                    cfg.setHandleHistoryOfRenamedFiles((Boolean)v);
-            });
+                "with lots of renamed files.").Do(v -> cfg.setHandleHistoryOfRenamedFiles((Boolean) v));
 
             parser.on("-S", "--search",
-                "Search for \"external\" source repositories and add them.").Do(v -> {
-                searchRepositories = true;
-            });
+                "Search for \"external\" source repositories and add them.").Do(v -> searchRepositories = true);
 
             parser.on("-s", "--source", "=/path/to/source/root",
                 "The root directory of the source tree.").
                 Do(source -> {
-                    File sourceRoot = new File((String)source);
+                    File sourceRoot = new File((String) source);
                     if (!sourceRoot.isDirectory()) {
                         die("Source root " + sourceRoot + " must be a directory");
                     }
                     try {
                         cfg.setSourceRoot(sourceRoot.getCanonicalPath());
-                    } catch(IOException e) {
+                    } catch (IOException e) {
                         die(e.getMessage());
                     }
                 }
@@ -703,57 +704,55 @@ public final class Indexer {
             parser.on("--style", "=path",
                 "Path to the subdirectory in the web-application containing the",
                 "requested stylesheet. The factory-setting is: \"default\".").
-                Do(stylePath -> {
-                    cfg.setWebappLAF((String)stylePath);
-                }
+                Do(stylePath -> cfg.setWebappLAF((String) stylePath)
             );
 
             parser.on("--symlink", "=/path/to/symlink",
                 "Allow this symlink to be followed. Option may be repeated.",
                 "By default only symlinks directly under source root directory",
-                "are allowed.").Do(symlink -> {
-                allowedSymlinks.add((String)symlink);
-            });
+                "are allowed.").Do(symlink -> allowedSymlinks.add((String) symlink));
 
             parser.on("-T", "--threads", "=number", Integer.class,
                 "The number of threads to use for index generation.",
                 "By default the number of threads will be set to the number",
-                "of available CPUs.").Do(threadCount -> {
-                cfg.setIndexingParallelism((Integer)threadCount);
-            });
+                "of available CPUs.").Do(threadCount -> cfg.setIndexingParallelism((Integer) threadCount));
 
             parser.on("-t", "--tabSize", "=number", Integer.class,
-                "Default tab size to use (number of spaces per tab character).").Do(tabSize -> {
-                cfg.setTabSize((Integer)tabSize);
-            });
+                "Default tab size to use (number of spaces per tab character).")
+                    .Do(tabSize -> cfg.setTabSize((Integer) tabSize));
 
-            parser.on("-U", "--host", "=protocol://host:port/contextPath",
-                "Send the current configuration to the specified address").Do(webAddr -> {
+            parser.on("-U", "--uri", "=protocol://webappURI:port/contextPath",
+                "Send the current configuration to the specified webappURI").Do(webAddr -> {
+                    webappURI = (String) webAddr;
+                    try {
+                        URI uri = new URI(webappURI);
+                        String scheme = uri.getScheme();
+                        if (!scheme.equals("http") && !scheme.equals("https")) {
+                            die("webappURI '" + webappURI + "' does not have HTTP/HTTPS scheme");
+                        }
+                    } catch (URISyntaxException e) {
+                        die("URL '" + webappURI + "' is not valid.");
+                    }
+
                     env = RuntimeEnvironment.getInstance();
-
-                    host = (String) webAddr;
-                    env.setConfigHost(host);
+                    env.setConfigURI(webappURI);
                 }
             );
 
             parser.on("---unitTest");  // For unit test only, will not appear in help
 
             parser.on("--updateConfig",
-                "Populate the webapp with bare configuration and exit.").Do(v -> {
-                noindex = true;
-            });
+                "Populate the webapp with bare configuration and exit.")
+                    .Do(v -> bareConfig = true);
 
             parser.on("--userPage", "=URL",
                 "Base URL of the user Information provider.",
                 "Example: \"http://www.myserver.org/viewProfile.jspa?username=\".",
-                "Use \"none\" to disable link.").Do(v -> {
-                cfg.setUserPage((String)v);
-            });
+                "Use \"none\" to disable link.").Do(v -> cfg.setUserPage((String) v));
 
             parser.on("--userPageSuffix", "=URL-suffix",
-                "URL Suffix for the user Information provider. Default: \"\".").Do(suffix -> {
-                cfg.setUserPageSuffix((String)suffix);
-            });
+                "URL Suffix for the user Information provider. Default: \"\".")
+                    .Do(suffix -> cfg.setUserPageSuffix((String) suffix));
 
             parser.on("-V", "--version", "Print version and quit.").Do(v -> {
                 System.out.println(Info.getFullVersion());
@@ -765,11 +764,14 @@ public final class Indexer {
                 LoggerUtil.setBaseConsoleLogLevel(Level.INFO);
             });
 
+            parser.on("--webappCtags", "=on|off", ON_OFF, Boolean.class,
+                "Web application should run ctags when necessary. Default is off.").
+                Do(v -> cfg.setWebappCtags((Boolean) v));
+
             parser.on("-W", "--writeConfig", "=/path/to/configuration",
                 "Write the current configuration to the specified file",
-                "(so that the web application can use the same configuration)").Do(configFile -> {
-                configFilename = (String)configFile;
-            });
+                "(so that the web application can use the same configuration)")
+                    .Do(configFile -> configFilename = (String) configFile);
         });
 
         // Need to read the configuration file first
@@ -790,6 +792,12 @@ public final class Indexer {
     }
 
     private static void checkConfiguration() {
+        env = RuntimeEnvironment.getInstance();
+
+        if (bareConfig && (env.getConfigURI() == null || env.getConfigURI().isEmpty())) {
+            die("Missing webappURI URL");
+        }
+
         if (repositories.size() > 0 && !cfg.isHistoryEnabled()) {
             die("Repositories were specified however history is off");
         }
@@ -812,7 +820,7 @@ public final class Indexer {
         } else {
             fileSpec = fileSpec.substring(1);
         }
-        fileSpec = fileSpec.toUpperCase();
+        fileSpec = fileSpec.toUpperCase(Locale.ROOT);
 
         // Disable analyzer?
         if (analyzer.equals("-")) {
@@ -843,7 +851,7 @@ public final class Indexer {
     }
 
     /**
-     * Write configuration to a file
+     * Write configuration to a file.
      * @param env runtime environment
      * @param filename file name to write the configuration to
      * @throws IOException if I/O exception occurred
@@ -856,25 +864,46 @@ public final class Indexer {
         }
     }
 
-    /*
+    // Wrapper for prepareIndexer() that always generates history cache.
+    public void prepareIndexer(RuntimeEnvironment env,
+                               boolean searchRepositories,
+                               boolean addProjects,
+                               boolean createDict,
+                               List<String> subFiles,
+                               List<String> repositories) throws IndexerException, IOException {
+
+        prepareIndexer(env, searchRepositories, addProjects, createDict, true,
+                subFiles, repositories);
+    }
+
+    /**
+     * Generate history cache and/or scan the repositories.
+     *
      * This is the first phase of the indexing where history cache is being
      * generated for repositories (at least for those which support getting
      * history per directory).
      *
-     * PMD wants us to use length() > 0 && charAt(0) instead of startsWith()
+     * PMD wants us to use length() &gt; 0 &amp;&amp; charAt(0) instead of startsWith()
      * for performance. We prefer clarity over performance here, so silence it.
+     *
+     * @param env runtime environment
+     * @param searchRepositories if true, search for repositories
+     * @param addProjects if true, add projects
+     * @param createDict if true, create dictionary
+     * @param createHistoryCache create history cache flag
+     * @param subFiles list of directories
+     * @param repositories list of repositories
+     * @throws IndexerException indexer exception
+     * @throws IOException I/O exception
      */
     @SuppressWarnings("PMD.SimplifyStartsWith")
     public void prepareIndexer(RuntimeEnvironment env,
             boolean searchRepositories,
             boolean addProjects,
-            Set<String> defaultProjects,
-            boolean listFiles,
             boolean createDict,
+            boolean createHistoryCache,
             List<String> subFiles,
-            List<String> repositories,
-            List<String> zapCache,
-            boolean listRepoPaths) throws IndexerException, IOException {
+            List<String> repositories) throws IndexerException, IOException {
 
         if (env.getDataRootPath() == null) {
             throw new IndexerException("ERROR: Please specify a DATA ROOT path");
@@ -884,18 +913,15 @@ public final class Indexer {
             throw new IndexerException("ERROR: please specify a SRC_ROOT with option -s !");
         }
 
-        if (zapCache.isEmpty() && !env.validateUniversalCtags()) {
+        if (!env.validateUniversalCtags()) {
             throw new IndexerException("Didn't find Universal Ctags");
-        }
-        if (zapCache == null) {
-            throw new IndexerException("Internal error, zapCache shouldn't be null");
         }
 
         // Projects need to be created first since when adding repositories below,
         // some of the project properties might be needed for that.
         if (addProjects) {
-            File files[] = env.getSourceRootFile().listFiles();
-            Map<String,Project> projects = env.getProjects();
+            File[] files = env.getSourceRootFile().listFiles();
+            Map<String, Project> projects = env.getProjects();
 
             // Keep a copy of the old project list so that we can preserve
             // the customization of existing projects.
@@ -909,7 +935,7 @@ public final class Indexer {
             // Add a project for each top-level directory in source root.
             for (File file : files) {
                 String name = file.getName();
-                String path = File.separator + name;
+                String path = '/' + name;
                 if (oldProjects.containsKey(name)) {
                     // This is an existing object. Reuse the old project,
                     // possibly with customizations, instead of creating a
@@ -917,102 +943,35 @@ public final class Indexer {
                     Project p = oldProjects.get(name);
                     p.setPath(path);
                     p.setName(name);
-                    p.completeWithDefaults(env.getConfiguration());
+                    p.completeWithDefaults();
                     projects.put(name, p);
                 } else if (!name.startsWith(".") && file.isDirectory()) {
                     // Found a new directory with no matching project, so
                     // create a new project with default properties.
-                    projects.put(name, new Project(name, path, env.getConfiguration()));
+                    projects.put(name, new Project(name, path));
                 }
             }
         }
         
-        if (searchRepositories || listRepoPaths || !zapCache.isEmpty()) {
+        if (searchRepositories) {
             LOGGER.log(Level.INFO, "Scanning for repositories...");
-            long start = System.currentTimeMillis();
+            Statistics stats = new Statistics();
             env.setRepositories(env.getSourceRootPath());
-            long time = (System.currentTimeMillis() - start) / 1000;
-            LOGGER.log(Level.INFO, "Done scanning for repositories ({0}s)", time);
-            
-            if (listRepoPaths || !zapCache.isEmpty()) {
-                List<RepositoryInfo> repos = env.getRepositories();
-                String prefix = env.getSourceRootPath();
-                if (listRepoPaths) {
-                    if (repos.isEmpty()) {
-                        System.out.println("No repositories found.");
-                        return;
-                    }
-                    System.out.println("Repositories in " + prefix + ":");
-                    for (RepositoryInfo info : env.getRepositories()) {
-                        String dir = info.getDirectoryName();
-                        System.out.println(dir.substring(prefix.length()));
-                    }
-                }
-                if (!zapCache.isEmpty()) {
-                    HashSet<String> toZap = new HashSet<>(zapCache.size() << 1);
-                    boolean all = false;
-                    for (String repo : zapCache) {
-                        if ("*".equals(repo)) {
-                            all = true;
-                            break;
-                        }
-                        if (repo.startsWith(prefix)) {
-                            repo = repo.substring(prefix.length());
-                        }
-                        toZap.add(repo);
-                    }
-                    if (all) {
-                        toZap.clear();
-                        for (RepositoryInfo info : env.getRepositories()) {
-                            toZap.add(info.getDirectoryName()
-                                    .substring(prefix.length()));
-                        }
-                    }
-                    try {
-                        HistoryGuru.getInstance().removeCache(toZap);
-                    } catch (HistoryException e) {
-                        LOGGER.log(Level.WARNING, "Clearing history cache failed: {0}",
-                                e.getLocalizedMessage());
-                    }
-                }
-                return;
-            }
+            stats.report(LOGGER, String.format("Done scanning for repositories, found %d repositories",
+                    env.getRepositories().size()));
         }
 
-        if (defaultProjects != null && !defaultProjects.isEmpty()) {
-            Set<Project> projects = new TreeSet<>();
-            for (String projectPath : defaultProjects) {
-                if (projectPath.equals("__all__")) {
-                    projects.addAll(env.getProjects().values());
-                    break;
-                }
-                for (Project p : env.getProjectList()) {
-                    if (p.getPath().equals(projectPath)) {
-                        projects.add(p);
-                        break;
-                    }
-                }
-            }
-            if (!projects.isEmpty()) {
-                env.setDefaultProjects(projects);
-            }
-        }
-
-        // Even if history is disabled globally, it can be enabled for some repositories.
-        if (repositories != null && !repositories.isEmpty()) {
-            LOGGER.log(Level.INFO, "Generating history cache for repositories: " +
-                repositories.stream().collect(Collectors.joining(",")));
-            HistoryGuru.getInstance().createCache(repositories);
-            LOGGER.info("Done...");
-          } else {
-              LOGGER.log(Level.INFO, "Generating history cache for all repositories ...");
-              HistoryGuru.getInstance().createCache();
-              LOGGER.info("Done...");
-          }
-
-        if (listFiles) {
-            for (String file : IndexDatabase.getAllFiles(subFiles)) {
-                LOGGER.fine(file);
+        if (createHistoryCache) {
+            // Even if history is disabled globally, it can be enabled for some repositories.
+            if (repositories != null && !repositories.isEmpty()) {
+                LOGGER.log(Level.INFO, "Generating history cache for repositories: " +
+                        repositories.stream().collect(Collectors.joining(",")));
+                HistoryGuru.getInstance().createCache(repositories);
+                LOGGER.info("Done...");
+            } else {
+                LOGGER.log(Level.INFO, "Generating history cache for all repositories ...");
+                HistoryGuru.getInstance().createCache();
+                LOGGER.info("Done...");
             }
         }
 
@@ -1036,16 +995,18 @@ public final class Indexer {
         IndexChangedListener progress)
             throws IOException {
         Statistics elapsed = new Statistics();
-        RuntimeEnvironment env = RuntimeEnvironment.getInstance().register();
+        RuntimeEnvironment env = RuntimeEnvironment.getInstance();
         LOGGER.info("Starting indexing");
 
-        IndexerParallelizer parallelizer = new IndexerParallelizer(env);
-
+        IndexerParallelizer parallelizer = env.getIndexerParallelizer();
+        final CountDownLatch latch;
         if (subFiles == null || subFiles.isEmpty()) {
             if (update) {
-                IndexDatabase.updateAll(parallelizer, progress);
+                latch = IndexDatabase.updateAll(progress);
             } else if (env.isOptimizeDatabase()) {
-                IndexDatabase.optimizeAll(parallelizer);
+                latch = IndexDatabase.optimizeAll();
+            } else {
+                latch = new CountDownLatch(0);
             }
         } else {
             List<IndexDatabase> dbs = new ArrayList<>();
@@ -1076,6 +1037,7 @@ public final class Indexer {
                 }
             }
 
+            latch = new CountDownLatch(dbs.size());
             for (final IndexDatabase db : dbs) {
                 final boolean optimize = env.isOptimizeDatabase();
                 db.addIndexChangedListener(progress);
@@ -1084,7 +1046,7 @@ public final class Indexer {
                     public void run() {
                         try {
                             if (update) {
-                                db.update(parallelizer);
+                                db.update();
                             } else if (optimize) {
                                 db.optimize();
                             }
@@ -1092,35 +1054,21 @@ public final class Indexer {
                             LOGGER.log(Level.SEVERE, "An error occurred while "
                                     + (update ? "updating" : "optimizing")
                                     + " index", e);
+                        } finally {
+                            latch.countDown();
                         }
                     }
                 });
             }
         }
 
-        parallelizer.getFixedExecutor().shutdown();
-        while (!parallelizer.getFixedExecutor().isTerminated()) {
-            try {
-                // Wait forever
-                parallelizer.getFixedExecutor().awaitTermination(999,
-                    TimeUnit.DAYS);
-            } catch (InterruptedException exp) {
-                LOGGER.log(Level.WARNING, "Received interrupt while waiting for executor to finish", exp);
-            }
-        }
+        // Wait forever for the executors to finish.
         try {
-            // It can happen that history index is not done in prepareIndexer()
-            // but via db.update() above in which case we must make sure the
-            // thread pool for renamed file handling is destroyed.
-            RuntimeEnvironment.destroyRenamedHistoryExecutor();
-        } catch (InterruptedException ex) {
-            LOGGER.log(Level.SEVERE,
-                    "destroying of renamed thread pool failed", ex);
-        }
-        try {
-            parallelizer.close();
-        } catch (Exception ex) {
-            LOGGER.log(Level.SEVERE, "parallelizer.close() failed", ex);
+            LOGGER.info("Waiting for the executors to finish");
+            latch.await(999, TimeUnit.DAYS);
+        } catch (InterruptedException exp) {
+            LOGGER.log(Level.WARNING, "Received interrupt while waiting" +
+                    " for executor to finish", exp);
         }
         elapsed.report(LOGGER, "Done indexing data of all repositories");
     }

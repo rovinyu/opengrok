@@ -18,7 +18,7 @@
  */
 
 /*
- * Copyright (c) 2005, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2005, 2019, Oracle and/or its affiliates. All rights reserved.
  */
 package org.opengrok.indexer.history;
 
@@ -81,7 +81,7 @@ public class DirectoryHistoryReader {
     HistoryEntry currentEntry; // set in next()
     History history; // set in the constructor
 
-    private static final int MAX_RESULTS=40;
+    private static final int MAX_RESULTS = 40;
 
     /**
      * The main task of this method is to produce list of history entries for
@@ -115,9 +115,7 @@ public class DirectoryHistoryReader {
             try {
                 // Get files under given directory by searching the index.
                 query = qparser.parse(path);
-                TopFieldDocs fdocs;// = searcher.search(query, hitsPerPage * cachePages, sort);
-                // fdocs.totalHits  is total found, we fetch just X
-                fdocs = searcher.search(query, MAX_RESULTS, sort);
+                TopFieldDocs fdocs = searcher.search(query, MAX_RESULTS, sort);
                 hits = fdocs.scoreDocs;
             } catch (ParseException e) {
                 LOGGER.log(Level.WARNING,
@@ -190,7 +188,7 @@ public class DirectoryHistoryReader {
     // Fill the giant hash with some data from one history entry.
     private void put(Date date, String revision, String author, String comment, String path) {
         long time = date.getTime();
-        date.setTime(time - (time % 3600000l));
+        date.setTime(time - (time % 3600000L));
 
         Map<String, Map<List<String>, SortedSet<String>>> ac = hash.get(date);
         if (ac == null) {

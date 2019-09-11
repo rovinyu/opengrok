@@ -18,7 +18,7 @@
  */
 
 /*
- * Copyright (c) 2008, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2008, 2019, Oracle and/or its affiliates. All rights reserved.
  */
 
 package org.opengrok.indexer.search.context;
@@ -39,7 +39,7 @@ class RegexpMatcher extends LineMatcher {
 
     private final Pattern termRegexp;
 
-    public RegexpMatcher(String term, boolean caseInsensitive) {
+    RegexpMatcher(String term, boolean caseInsensitive) {
         super(caseInsensitive); 
         Pattern regexp;
         try {
@@ -53,10 +53,7 @@ class RegexpMatcher extends LineMatcher {
 
     @Override
     public int match(String line) {
-        return (termRegexp != null && termRegexp.matcher(line).matches() )
-            ? MATCHED 
-            : NOT_MATCHED
-        ;
+        return (termRegexp != null && termRegexp.matcher(line).matches()) ? MATCHED : NOT_MATCHED;
     }
     
 }

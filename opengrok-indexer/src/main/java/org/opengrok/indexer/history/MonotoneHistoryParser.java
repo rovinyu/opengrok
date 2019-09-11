@@ -18,7 +18,7 @@
  */
 
 /*
- * Copyright (c) 2009, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2009, 2019, Oracle and/or its affiliates. All rights reserved.
  * Portions Copyright (c) 2017, Chris Fraire <cfraire@me.com>.
  */
 package org.opengrok.indexer.history;
@@ -30,21 +30,19 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.file.InvalidPathException;
-import java.text.DateFormat;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import org.opengrok.indexer.configuration.RuntimeEnvironment;
 import org.opengrok.indexer.logger.LoggerFactory;
 import org.opengrok.indexer.util.Executor;
 import org.opengrok.indexer.util.ForbiddenSymlinkException;
 
 /**
- * Class used to parse the history log from Monotone
+ * Class used to parse the history log from Monotone.
  *
  * @author Trond Norbye
  */
@@ -52,7 +50,7 @@ class MonotoneHistoryParser implements Executor.StreamHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MonotoneHistoryParser.class);
 
-    private List<HistoryEntry> entries = new ArrayList<HistoryEntry>(); //NOPMD
+    private List<HistoryEntry> entries = new ArrayList<>(); //NOPMD
     private final MonotoneRepository repository;
     private final String mydir;
 
@@ -99,7 +97,6 @@ class MonotoneHistoryParser implements Executor.StreamHandler {
     @Override
     public void processStream(InputStream input) throws IOException {
         RuntimeEnvironment env = RuntimeEnvironment.getInstance();
-        DateFormat df = repository.getDateFormat();
         BufferedReader in = new BufferedReader(new InputStreamReader(input));
         String s;
 
@@ -138,7 +135,7 @@ class MonotoneHistoryParser implements Executor.StreamHandler {
                     if (s.startsWith("Date:")) {
                         Date date = new Date();
                         try {
-                            date = df.parse(s.substring("date:".length()).trim());
+                            date = repository.parse(s.substring("date:".length()).trim());
                         } catch (ParseException pe) {
                             //
                             // Overriding processStream() thus need to comply with the
@@ -158,12 +155,12 @@ class MonotoneHistoryParser implements Executor.StreamHandler {
                     }
                     break;
                 case 4:
-                    if (s.startsWith("Modified ") || s.startsWith("Added ") || s.startsWith("Deleted ")) { //NOPMD
-                        /* swallow */
+                    if (s.startsWith("Modified ") || s.startsWith("Added ") || s.startsWith("Deleted ")) {
+                        continue;
                     } else if (s.equalsIgnoreCase("ChangeLog:")) {
                         state = 5;
                     } else {
-                        String files[] = s.split(" ");
+                        String[] files = s.split(" ");
                         for (String f : files) {
                             File file = new File(mydir, f);
                             try {

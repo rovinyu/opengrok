@@ -1,5 +1,5 @@
 
-Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
+Copyright (c) 2006, 2019 Oracle and/or its affiliates. All rights reserved.
 
 
 # OpenGrok - a wicked fast source browser
@@ -10,12 +10,13 @@ Copyright (c) 2006, 2018 Oracle and/or its affiliates. All rights reserved.
 [![AppVeyor status](https://ci.appveyor.com/api/projects/status/8oqlk5yx2c5fnwqw/branch/master?svg=true)](https://ci.appveyor.com/project/vladak/opengrok-b5hnp/branch/master)
 [![License](https://img.shields.io/badge/License-CDDL%201.0-blue.svg)](https://opensource.org/licenses/CDDL-1.0)
 
-1. [Introduction](#1-introduction)
-2. [OpenGrok setup](#2-opengrok-install-and-setup)
-3. [Information for developers](#3-information-for-developers)
-4. [Authors](#4-authors)
-5. [Contact us](#5-contact-us)
-7. [Demo](#6-demo)
+- [OpenGrok - a wicked fast source browser](#opengrok---a-wicked-fast-source-browser)
+  - [1. Introduction](#1-introduction)
+  - [2. OpenGrok install and setup](#2-opengrok-install-and-setup)
+  - [3. Information for developers](#3-information-for-developers)
+  - [4. Authors](#4-authors)
+  - [5. Contact us](#5-contact-us)
+  - [6. Run as container](#6-run-as-container)
 
 ## 1. Introduction
 
@@ -51,6 +52,8 @@ Feel free to participate in discussion on the mailing lists:
 
 To subscribe, send email to `<mailing_list_name>-subscribe@yahoogroups.com`
 
-## 6. Demo
+There are also Slack channels on https://opengrok.slack.com/
 
-Visit <http://demo.opengrok.org>
+## 6. Run as container
+
+You can run OpenGrok as a Docker container as described [here](docker/README.md).

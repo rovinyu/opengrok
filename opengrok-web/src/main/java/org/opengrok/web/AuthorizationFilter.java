@@ -18,7 +18,7 @@
  */
 
 /*
- * Copyright (c) 2016, 2018, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2016, 2019, Oracle and/or its affiliates. All rights reserved.
  */
 package org.opengrok.web;
 
@@ -73,8 +73,8 @@ public class AuthorizationFilter implements Filter {
             } else {
                 LOGGER.log(Level.INFO, "Access denied for URI: {0}", httpReq.getRequestURI());
             }
-            
-            /**
+
+            /*
              * Add the request to the statistics. This is called just once for a
              * single request otherwise the next filter will count the same
              * request twice ({@link StatisticsFilter#collectStats}).
@@ -86,12 +86,12 @@ public class AuthorizationFilter implements Filter {
             config.getEnv().getStatistics().addRequest("requests_forbidden");
             config.getEnv().getStatistics().addRequestTime("requests_forbidden",
                     System.currentTimeMillis() - processTime);
-            
-            if (!config.getEnv().getConfiguration().getForbiddenIncludeFileContent(false).isEmpty()) {
+
+            if (!config.getEnv().getIncludeFiles().getForbiddenIncludeFileContent(false).isEmpty()) {
                 sr.getRequestDispatcher("/eforbidden").forward(sr, sr1);
                 return;
             }
-            
+
             httpRes.sendError(HttpServletResponse.SC_FORBIDDEN, "Access forbidden");
             return;
         }
